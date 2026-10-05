@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#22303a" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="PartCheck" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>PartCheck AI · Photo inspection</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- ================= LOGIN ================= -->
+  <section class="login" id="login">
+    <div class="login-box">
+      <img src="/icons/icon-192.png" width="72" height="72" alt="" />
+      <h1>PartCheck AI</h1>
+      <p class="muted">Check spare parts from photos and get a PASS or FAIL.</p>
+      <form id="loginForm" novalidate hidden>
+        <label class="field">
+          <span>Password</span>
+          <span class="pw-wrap">
+            <input id="loginPw" type="password" autocomplete="current-password" enterkeyhint="go" required />
+            <button type="button" class="pw-eye" id="pwToggle" aria-label="Show password"><i data-icon="eye"></i></button>
+          </span>
+        </label>
+        <p class="login-err" id="loginErr" role="alert"></p>
+        <button class="btn primary big" id="loginBtn" type="submit"><i data-icon="lock"></i>Log in</button>
+      </form>
+      <div class="login-msg" id="loginMsg" hidden></div>
+      <p class="muted" id="loginChecking">Checking…</p>
+    </div>
+  </section>
+
+  <div id="app" hidden>
+    <!-- ================= TOP BAR ================= -->
+    <header class="topbar no-print">
+      <a class="brand" href="#" data-nav="setup" aria-label="PartCheck AI home">
+        <img src="/icons/icon-192.png" width="34" height="34" alt="" />
+        <span>PartCheck AI</span>
+      </a>
+      <nav class="nav">
+        <button type="button" data-nav="setup" class="active"><i data-icon="scan"></i><span>Inspect</span></button>
+        <button type="button" data-nav="history"><i data-icon="clock"></i><span>History</span></button>
+        <button type="button" id="btnInstall" class="nav-install" hidden><i data-icon="download"></i><span>Install app</span></button>
+        <button type="button" id="btnLogout" title="Log out" aria-label="Log out"><i data-icon="logout"></i><span class="hide-sm">Log out</span></button>
+      </nav>
+    </header>
+
+    <!-- ================= STEPS ================= -->
+    <div class="stepper no-print" id="steps">
+      <ol>
+        <li data-step="setup"><span class="dot">1</span><span class="lbl">Choose item</span></li>
+        <li data-step="capture"><span class="dot">2</span><span class="lbl">Take photos</span></li>
+        <li data-step="result"><span class="dot">3</span><span class="lbl">Result</span></li>
+      </ol>
+    </div>
+
+    <main>
+      <!-- ================= STEP 1: SETUP ================= -->
+      <section class="view" id="view-setup">
+        <div class="notice warn" id="setupBanner" hidden></div>
+
+        <div class="install-card" id="installBanner" hidden>
+          <img src="/icons/icon-192.png" width="44" height="44" alt="" />
+          <div class="install-txt">
+            <b>Install PartCheck on this device</b>
+            <span>Open it from your home screen or desktop, like any other app.</span>
+          </div>
+          <div class="install-actions">
+            <button type="button" class="btn signal" id="btnInstallBanner"><i data-icon="download"></i>Install</button>
+            <button type="button" class="btn link" id="btnInstallLater">Not now</button>
+          </div>
+        </div>
+
+        <div class="how" id="howItWorks" hidden>
+          <div class="how-step"><span class="how-ic"><i data-icon="box"></i></span><span><b>Choose the item</b><small>Pick from the list or create your own checklist</small></span></div>
+          <div class="how-step"><span class="how-ic"><i data-icon="camera"></i></span><span><b>Take photos</b><small>One photo for each side the app asks for</small></span></div>
+          <div class="how-step"><span class="how-ic"><i data-icon="check"></i></span><span><b>Get the result</b><small>AI checks every part and gives PASS or FAIL</small></span></div>
+          <button type="button" class="how-x" id="btnHowX" aria-label="Hide these tips"><i data-icon="x"></i></button>
+        </div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>What are you inspecting?</h2>
+              <p class="muted">Tap an item to select it. Tap the pencil to change its checklist.</p>
+            </div>
+            <div id="itemList" class="items" role="radiogroup" aria-label="Item to inspect"></div>
+            <button type="button" class="add-row" id="btnNewTpl"><i data-icon="plus"></i>Create custom item</button>
+
+            <div id="editor" class="editor" hidden>
+              <h3 id="editorTitle">Custom item</h3>
+              <label class="field">
+                <span>Item name</span>
+                <input id="edName" placeholder="e.g. Fire extinguisher, Electrical panel, Laptop" maxlength="120" />
+              </label>
+              <label class="field">
+                <span>Details for the AI <em>(optional)</em></span>
+                <textarea id="edDesc" rows="2" placeholder="Model, size, anything that helps identify the parts"></textarea>
+              </label>
+              <button type="button" class="btn ai" id="btnSuggest"><i data-icon="sparkles"></i>Suggest checklist with AI</button>
+
+              <p class="sub-head">Views and the parts that must be visible in each</p>
+              <div class="ed-angles" id="edAngles"></div>
+              <button type="button" class="btn ghost small" id="btnAddAngle"><i data-icon="plus"></i>Add a view</button>
+
+              <label class="field top-gap">
+                <span>Parts that may show in any view <em>(one per line)</em></span>
+                <textarea id="edGeneral" rows="2" placeholder="e.g. Serial number label"></textarea>
+              </label>
+              <div class="row gap wrap">
+                <button type="button" class="btn primary" id="btnSaveTpl"><i data-icon="check"></i>Save item</button>
+                <button type="button" class="btn ghost" id="btnCancelTpl">Close</button>
+                <button type="button" class="btn danger-ghost" id="btnDeleteTpl"><i data-icon="trash"></i>Delete</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Inspection details</h2>
+              <p class="muted">These appear on the report. All optional.</p>
+            </div>
+            <label class="field"><span>Inspector name</span><input id="mInspector" maxlength="80" autocomplete="name" /></label>
+            <label class="field"><span>Serial / asset / job number</span><input id="mSerial" maxlength="80" /></label>
+            <label class="field"><span>Site or location</span><input id="mLocation" maxlength="120" /></label>
+            <label class="field"><span>Notes</span><textarea id="mNotes" rows="2" maxlength="500"></textarea></label>
+            <label class="check"><input type="checkbox" id="mGps" /> Add GPS location to photos</label>
+            <button type="button" class="btn primary big" id="btnStart"><i data-icon="camera"></i>Start taking photos</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= STEP 2: CAPTURE ================= -->
+      <section class="view" id="view-capture" hidden>
+        <div class="capture-head">
+          <div class="cap-title">
+            <h2 id="capItem"></h2>
+            <p class="muted" id="capProgress"></p>
+            <div class="progress" aria-hidden="true"><div id="capBar"></div></div>
+          </div>
+          <button type="button" class="btn ghost small" id="btnExtraAngle"><i data-icon="plus"></i>Add extra view</button>
+        </div>
+        <div class="chips" id="angleChips" role="tablist" aria-label="Views"></div>
+
+        <div class="capture-grid">
+          <div>
+            <div class="stage" id="stage">
+              <video id="video" playsinline muted autoplay></video>
+              <img id="preview" alt="Captured photo" hidden />
+              <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+              <div class="stage-label" id="stageLabel"></div>
+              <div class="qbar" id="qbar"></div>
+              <div class="nocam" id="nocam" hidden>
+                <p><b>Camera preview is not available here.</b></p>
+                <p>Use <b>Upload photo</b> below. On a phone it opens the camera.</p>
+              </div>
+            </div>
+            <div class="controls">
+              <label class="ctl" id="lblUpload">
+                <span class="ctl-ic"><i data-icon="image"></i></span><span>Upload photo</span>
+                <input type="file" id="fileInput" accept="image/*" capture="environment" hidden />
+              </label>
+              <button type="button" class="shutter" id="btnShoot" aria-label="Take photo"><span></span></button>
+              <button type="button" class="ctl" id="btnRetake" hidden><span class="ctl-ic"><i data-icon="rotate"></i></span><span>Retake</span></button>
+              <button type="button" class="btn primary" id="btnNext" hidden>Next view<i data-icon="right"></i></button>
+              <span class="ctl-spacer" id="ctlSpacer"></span>
+            </div>
+          </div>
+
+          <div class="side">
+            <div class="panel tight">
+              <h3 id="angleName"></h3>
+              <p class="muted" id="angleGuide"></p>
+              <p class="sub-head">Make sure these are visible:</p>
+              <ul class="expect" id="angleParts"></ul>
+            </div>
+            <p class="tip"><i data-icon="info"></i><span>Fill the box with the item. The photo saves exactly what you see in the box.</span></p>
+            <button type="button" class="btn primary big" id="btnEvaluate"><i data-icon="sparkles"></i>Evaluate photos</button>
+            <button type="button" class="btn link" id="btnBackSetup"><i data-icon="left"></i>Back to checklist</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= STEP 3: RESULT ================= -->
+      <section class="view" id="view-result" hidden></section>
+
+      <!-- ================= HISTORY ================= -->
+      <section class="view" id="view-history" hidden>
+        <div class="capture-head">
+          <div>
+            <h2>Saved inspections</h2>
+            <p class="muted">Saved on this device only. Export to keep a copy.</p>
+          </div>
+          <div class="row gap wrap">
+            <button type="button" class="btn ghost small" id="btnExportAll"><i data-icon="download"></i>Export all</button>
+            <button type="button" class="btn danger-ghost small" id="btnClearHistory"><i data-icon="trash"></i>Clear</button>
+          </div>
+        </div>
+        <div class="filters" id="histFilters" role="tablist" aria-label="Filter by result"></div>
+        <div id="historyList" class="history"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- install instructions (iPhone / browsers without an install prompt) -->
+  <dialog id="dlgInstall">
+    <form method="dialog" class="dlg">
+      <h2>Install PartCheck</h2>
+      <div class="dlg-block" id="instIos">
+        <h3>iPhone / iPad (Safari)</h3>
+        <ol><li>Tap the <b>Share</b> button at the bottom of Safari.</li><li>Choose <b>Add to Home Screen</b>.</li><li>Tap <b>Add</b>. PartCheck appears on your home screen.</li></ol>
+      </div>
+      <div class="dlg-block" id="instAndroid">
+        <h3>Android (Chrome)</h3>
+        <ol><li>Tap the <b>⋮</b> menu at the top right.</li><li>Choose <b>Install app</b> or <b>Add to Home screen</b>.</li></ol>
+      </div>
+      <div class="dlg-block" id="instDesktop">
+        <h3>Computer (Chrome or Edge)</h3>
+        <ol><li>Click the <b>install icon</b> at the right end of the address bar, or open the browser menu.</li><li>Choose <b>Install PartCheck AI</b>. It opens in its own window and appears in the Start menu / Applications.</li></ol>
+      </div>
+      <button class="btn primary big" value="close">OK</button>
+    </form>
+  </dialog>
+
+  <div class="loading" id="loading" hidden>
+    <div class="loading-box">
+      <div class="scanner" aria-hidden="true"></div>
+      <p id="loadingText">Working…</p>
+      <small class="muted-light">This usually takes 10–30 seconds.</small>
+    </div>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
