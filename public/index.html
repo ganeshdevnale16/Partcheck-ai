@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#15222C" />
+  <meta name="description" content="Inspection AI – scan a QR tag, inspect with the camera, get a Green / Yellow / Red result and a signed report." />
+  <title>Inspection AI · Demo</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Inspection AI" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=5.0.0" />
+</head>
+<body class="locked">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="logo" viewBox="0 0 32 40"><path d="M4 6h24v26a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#FFB000"/><circle cx="16" cy="11" r="3" fill="#15222C"/><path d="M10 23l4.5 4.5L23 18" stroke="#15222C" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-scaffold" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 3v18M19 3v18M5 8h14M5 14h14M5 20h14M5 8l14 6"/></g></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h8l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></g></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></g></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/></g></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM18 18h3v3h-3zM14 20h2M20 14v2"/></g></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 3h12v15a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3z"/><circle cx="12" cy="7" r="1.6"/><path d="M9 13h6M9 16h4"/></g></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="4"/></g></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-flash" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></g></symbol>
+    <symbol id="i-flip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></g></symbol>
+    <symbol id="i-share" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></g></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></g></symbol>
+    <symbol id="i-print" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2"/><rect x="6" y="14" width="12" height="7"/></g></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM9 13l2 2 4-4"/></g></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z" fill="currentColor"/></symbol>
+  </svg>
+
+  <div class="splash" id="splash" aria-hidden="true"><svg class="splash-mark"><use href="#logo"/></svg></div>
+
+  <!-- SIGN IN -->
+  <div class="login" id="loginScreen" hidden>
+    <figure class="login-art" style="margin:0">
+      <img id="loginArt" alt="" />
+      <figcaption>Scan the tag. Inspect with the camera. Sign the report on site.<small>Visual inspections for scaffolds and site equipment</small></figcaption>
+    </figure>
+    <div class="login-pane">
+      <div class="login-card">
+        <div class="brandline"><svg><use href="#logo"/></svg><span>Inspection AI</span> <span class="demo-badge">Demo</span></div>
+        <h1 class="login-title">Sign in</h1>
+        <p class="login-hint">This is a demo workspace. Any password works.</p>
+        <form id="loginForm" novalidate>
+          <label class="field"><span>Your name</span><input id="loginUser" autocomplete="name" maxlength="60" /></label>
+          <label class="field"><span>Password</span>
+            <span class="pw-wrap"><input id="loginPass" type="password" autocomplete="current-password" maxlength="200" /><button type="button" class="pw-toggle" id="pwToggle">Show</button></span>
+          </label>
+          <p class="login-err" id="loginErr" role="alert"></p>
+          <button type="submit" class="btn btn-hivis btn-block" id="loginBtn">Sign in</button>
+        </form>
+        <p class="login-foot">Demo build: photos and live camera use sample site footage, and AI results are pre-recorded.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR (desktop) -->
+  <aside class="sidebar" aria-label="Main">
+    <a class="brand" href="#home" data-go="home"><svg><use href="#logo"/></svg><span>Inspection AI</span> <span class="demo-badge">Demo</span></a>
+    <nav class="side-nav">
+      <button type="button" data-go="home"><svg><use href="#i-home"/></svg>Dashboard</button>
+      <button type="button" data-go="setup"><svg><use href="#i-clip"/></svg>New inspection</button>
+      <button type="button" data-go="tags"><svg><use href="#i-tag"/></svg>QR tags</button>
+      <button type="button" data-go="reports"><svg><use href="#i-history"/></svg>Reports</button>
+      <button type="button" data-go="settings"><svg><use href="#i-settings"/></svg>Settings</button>
+    </nav>
+    <button type="button" class="side-scan" data-go="scan"><svg><use href="#i-scan"/></svg>Scan QR tag</button>
+    <div class="side-foot"><span class="avatar" id="sideAvatar">?</span><div><b id="sideName">Inspector</b><span id="sideRole">Demo workspace</span></div><button type="button" id="sideSignOut">Sign out</button></div>
+  </aside>
+
+  <!-- TOP BAR (mobile) -->
+  <header class="appbar" id="appbar">
+    <button type="button" class="appbar-back" id="btnBack" aria-label="Back" hidden><svg><use href="#i-back"/></svg></button>
+    <a class="brand" href="#home" data-go="home"><svg><use href="#logo"/></svg><span>Inspection AI</span></a>
+    <span class="spacer"></span>
+    <span class="chip-demo">Demo</span>
+    <button type="button" class="avatar-btn" data-go="settings" aria-label="Settings"><span class="avatar" id="topAvatar">?</span></button>
+  </header>
+
+  <main id="main">
+    <!-- HOME -->
+    <section class="view" id="view-home" hidden>
+      <div class="home-hero">
+        <div class="hero-img" id="heroImg"></div>
+        <div class="hero-body">
+          <p class="greet" id="greet">Good morning</p>
+          <h1 id="homeSite">Orchid Heights, Pune</h1>
+          <p class="sub">Scan the QR tag on a scaffold to start its inspection. The result and report are ready before you leave the platform.</p>
+          <div class="hero-actions">
+            <button type="button" class="btn btn-hivis" data-go="scan"><svg><use href="#i-scan"/></svg>Scan QR tag</button>
+            <button type="button" class="btn btn-ghost-light" data-go="setup">Inspect without a tag</button>
+          </div>
+        </div>
+      </div>
+      <div class="kpis" id="kpis"></div>
+      <div class="home-cols">
+        <div>
+          <div class="sec-row"><h2 class="sec-title">Recent reports</h2><button type="button" class="link-btn" data-go="reports">All reports</button></div>
+          <div class="list" id="homeRecent"></div>
+        </div>
+        <div>
+          <div class="sec-row"><h2 class="sec-title">This week</h2></div>
+          <div class="card"><div class="week-chart" id="weekChart"></div>
+            <div class="legend"><span><i style="background:var(--go)"></i>Green</span><span><i style="background:var(--caution)"></i>Yellow</span><span><i style="background:var(--stop)"></i>Red</span></div>
+          </div>
+          <div class="sec-row"><h2 class="sec-title">Tag status</h2><button type="button" class="link-btn" data-go="tags">All tags</button></div>
+          <div class="list" id="homeTags"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 1: CHOOSE TYPE -->
+    <section class="view" id="view-setup" hidden>
+      <h1 class="page-title">What are you inspecting?</h1>
+      <div class="search"><input type="search" id="typeSearch" placeholder="Search inspection types" aria-label="Search inspection types" /></div>
+      <div class="type-grid" id="typeGrid"></div>
+    </section>
+
+    <!-- STEP 2: DETAILS -->
+    <section class="view" id="view-details" hidden>
+      <div id="fromTag"></div>
+      <div class="type-head">
+        <span id="dtIconWrap" aria-hidden="true"></span>
+        <div class="type-head-text"><h1 class="type-head-name" id="dtName"></h1><p id="dtDesc"></p></div>
+        <button type="button" class="btn btn-line btn-sm" id="dtChange">Change</button>
+      </div>
+      <div class="scenario-box">
+        <p><b>Demo outcome</b><br />Which pre-recorded result this inspection shows.</p>
+        <div class="seg" id="scenarioSeg" role="radiogroup" aria-label="Demo outcome">
+          <button type="button" data-v="pass">Pass</button>
+          <button type="button" data-v="fail">Fail</button>
+        </div>
+      </div>
+      <form class="card" id="setupForm" novalidate>
+        <div class="grid2">
+          <label class="field"><span id="sfIdLabel">Asset ID / serial no.</span><input id="sfId" maxlength="60" placeholder="e.g. SC-014" autocomplete="off" /></label>
+          <label class="field"><span>Location / area</span><input id="sfLocation" maxlength="120" placeholder="e.g. Tower A – east elevation" /></label>
+        </div>
+        <label class="field"><span>Inspected by</span><input id="sfInspector" maxlength="80" autocomplete="name" /></label>
+        <details class="more" id="sfMore">
+          <summary>More details <em>(optional)</em></summary>
+          <div class="grid2" id="scaffoldExtras">
+            <label class="field"><span>Height (m)</span><input id="sfHeight" type="number" min="0" step="0.5" inputmode="decimal" /></label>
+            <label class="field"><span>Number of lifts</span><input id="sfLifts" type="number" min="0" step="1" inputmode="numeric" /></label>
+            <label class="field"><span>Duty</span><select id="sfDuty"><option value="">Not known</option><option>Light duty</option><option>General duty</option><option>Heavy duty</option></select></label>
+            <label class="field"><span>Erected by</span><input id="sfErector" maxlength="80" placeholder="Contractor" /></label>
+          </div>
+          <div class="grid2">
+            <label class="field"><span>Last inspection</span><input id="sfLast" type="date" /></label>
+            <label class="field"><span>Reason</span><select id="sfReason"><option>Routine check</option><option>Before first use / handover</option><option>After repair or change</option><option>After bad weather</option><option>After incident or damage</option></select></label>
+          </div>
+          <label class="field"><span>Notes for the report</span><textarea id="sfNotes" rows="2" maxlength="500"></textarea></label>
+        </details>
+        <label class="switch"><input type="checkbox" id="sfGps" /><span class="switch-ui" aria-hidden="true"></span><span>Add GPS location to photos</span></label>
+      </form>
+      <div class="card">
+        <div class="sec-row" style="margin-top:0"><h2 class="card-title" style="margin:0">What you'll capture</h2><button type="button" class="link-btn" id="btnEditThisType">Edit checklist</button></div>
+        <ol class="plan-steps" id="planSteps"></ol>
+      </div>
+      <div class="start-actions">
+        <button type="button" class="btn btn-hivis btn-xl" id="btnLive"><svg><use href="#i-scan"/></svg><span><b>Live scan</b><small>Move the camera, checks tick off by themselves</small></span></button>
+        <button type="button" class="btn btn-line btn-xl" id="btnStart"><svg><use href="#i-camera"/></svg><span><b>Photo by photo</b><small>One photo for each view</small></span></button>
+      </div>
+    </section>
+
+    <!-- TYPE EDITOR -->
+    <section class="view" id="view-editor" hidden>
+      <h1 class="page-title" id="edTitle">New inspection type</h1>
+      <div class="card">
+        <label class="field"><span>Name</span><input id="edName" maxlength="80" placeholder="e.g. Forklift, Ladder, Safety harness" /></label>
+        <label class="field"><span>Description</span><textarea id="edDesc" rows="2" maxlength="400"></textarea></label>
+        <label class="field"><span>Name of the ID field</span><input id="edIdLabel" maxlength="40" placeholder="Asset ID / serial no." /></label>
+        <label class="switch"><input type="checkbox" id="edSafety" /><span class="switch-ui" aria-hidden="true"></span><span>Safety wording (Safe to use / Do not use)</span></label>
+        <button type="button" class="btn btn-ai" id="btnSuggest" style="margin-top:.6rem"><svg><use href="#i-spark"/></svg>Suggest views and checks with AI</button>
+      </div>
+      <div class="card">
+        <h2 class="card-title">Views and checks</h2>
+        <p class="muted">Each view is one photo angle. One check per line. Start a line with <code>!</code> for a critical check. After <code>::</code> write what must be visibly true.</p>
+        <div class="ed-views" id="edViews"></div>
+        <button type="button" class="btn btn-line btn-sm" id="edAddView">Add a view</button>
+        <label class="field" style="margin-top:1rem"><span>Checks that can be seen in any view</span><textarea id="edGeneral" rows="2"></textarea></label>
+      </div>
+      <div class="row-btns sticky-actions">
+        <button type="button" class="btn btn-hivis" id="edSave">Save inspection type</button>
+        <button type="button" class="btn btn-line" id="edCancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="edDelete" hidden>Delete</button>
+      </div>
+    </section>
+
+    <!-- PHOTO CAPTURE -->
+    <section class="view dark" id="view-capture" hidden>
+      <div class="cam-top">
+        <button type="button" class="icon-btn light" id="capClose" aria-label="Close camera"><svg><use href="#i-close"/></svg></button>
+        <div class="cam-title"><span class="cam-step" id="capProgress"></span><b id="angleName"></b></div>
+        <button type="button" class="pill-btn" id="capSource" title="Camera source"><svg><use href="#i-camera"/></svg><span>Demo</span></button>
+      </div>
+      <div class="stepper" id="angleChips" role="tablist" aria-label="Views"></div>
+      <div class="stage" id="capStage">
+        <canvas id="capCanvas"></canvas>
+        <video id="capVideo" playsinline muted autoplay hidden></video>
+        <img id="capPreview" alt="Captured photo" hidden />
+        <div class="grain"></div>
+        <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <div class="qbar" id="capQbar"></div>
+        <span class="rec-dot" id="capLive">LIVE</span>
+        <div class="wm" id="capWm" hidden></div>
+        <div class="snap-flash" id="capFlash"></div>
+      </div>
+      <div class="thumbs" id="capThumbs"></div>
+      <div class="sheet">
+        <p class="sheet-guide" id="angleGuide"></p>
+        <ul class="checks-mini" id="angleParts"></ul>
+      </div>
+      <div class="cam-controls">
+        <label class="round-btn" id="lblUpload" aria-label="Choose from gallery"><svg><use href="#i-upload"/></svg><input type="file" id="fileInput" accept="image/*" /></label>
+        <button type="button" class="round-btn" id="btnRetake" hidden aria-label="Retake"><svg><use href="#i-flip"/></svg></button>
+        <button type="button" class="shutter" id="btnShoot" aria-label="Take photo"><span></span></button>
+        <button type="button" class="round-btn" id="btnNext" hidden aria-label="Next view"><svg><use href="#i-chev"/></svg></button>
+        <button type="button" class="round-btn" id="btnExtra" aria-label="Add an extra photo">+</button>
+      </div>
+      <button type="button" class="btn btn-hivis btn-block" id="btnEvaluate">Check photos</button>
+    </section>
+
+    <!-- LIVE SCAN -->
+    <section class="view dark" id="view-live" hidden>
+      <div class="cam-top">
+        <button type="button" class="icon-btn light" id="lvClose" aria-label="Close live scan"><svg><use href="#i-close"/></svg></button>
+        <div class="cam-title"><span class="cam-step" id="lvStats">Starting camera…</span><b id="lvItem"></b></div>
+        <button type="button" class="pill-btn" id="lvSpeed" title="Demo speed">1×</button>
+      </div>
+      <div class="live-wrap">
+        <div>
+          <div class="stage" id="lvStage">
+            <canvas id="lvCanvas"></canvas>
+            <div class="grain"></div>
+            <div class="lv-hud"><span class="lv-state scan" id="lvState">Scanning</span><span class="lv-view" id="lvView"></span></div>
+            <div class="lv-ring"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15.5" class="bg"/><circle cx="18" cy="18" r="15.5" class="fg" id="lvRingFg"/></svg><b id="lvPct">0%</b></div>
+            <div class="lv-hint" id="lvHint" aria-live="polite"></div>
+            <div class="snap-flash" id="lvFlash"></div>
+            <div class="lv-done" id="lvDone" hidden><span>✓</span><p>All checks done</p><small id="lvDoneSub">Preparing the result…</small></div>
+          </div>
+          <div class="cam-controls">
+            <button type="button" class="round-btn" id="lvPause" aria-label="Pause"><svg><use href="#i-pause"/></svg></button>
+            <button type="button" class="shutter" id="lvShoot" aria-label="Save this frame as a photo"><span></span></button>
+            <button type="button" class="round-btn wide" id="lvSkip">Skip view</button>
+          </div>
+        </div>
+        <div class="sheet">
+          <p class="sheet-guide" id="lvNext"></p>
+          <div id="lvList" class="lv-list"></div>
+          <div class="lv-defects" id="lvDefects" hidden><h4>Damage spotted</h4><ul id="lvDefectList" style="margin:0;padding-left:1rem"></ul></div>
+        </div>
+      </div>
+      <button type="button" class="btn btn-hivis btn-block" id="lvFinish">Finish and get result</button>
+    </section>
+
+    <!-- SCAN QR -->
+    <section class="view dark" id="view-scan" hidden>
+      <div class="cam-top">
+        <button type="button" class="icon-btn light" id="scClose" aria-label="Close scanner"><svg><use href="#i-close"/></svg></button>
+        <div class="cam-title"><span class="cam-step">Point the camera at the tag</span><b>Scan QR tag</b></div>
+        <button type="button" class="pill-btn" id="scSource"><svg><use href="#i-camera"/></svg><span>Demo</span></button>
+      </div>
+      <div class="stage" id="scStage">
+        <canvas id="scCanvas"></canvas>
+        <video id="scVideo" playsinline muted autoplay hidden></video>
+        <div class="grain"></div>
+        <div class="scan-reticle" id="scReticle"><i></i><i></i><i></i><i></i><span class="laser"></span></div>
+        <div class="scan-msg" id="scMsg">Looking for a QR tag…</div>
+      </div>
+      <div class="scan-picks">
+        <p>Demo: choose which tag the inspector is standing in front of</p>
+        <div class="chips" id="scChips"></div>
+        <div class="row-btns" style="margin-top:.4rem">
+          <button type="button" class="btn btn-dark-line btn-sm" id="scManual">Type tag ID</button>
+          <button type="button" class="btn btn-dark-line btn-sm" data-go="tags">Manage QR tags</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULT -->
+    <section class="view" id="view-result" hidden></section>
+
+    <!-- REPORTS -->
+    <section class="view" id="view-reports" hidden>
+      <div class="page-head"><h1 class="page-title">Reports</h1><button type="button" class="btn btn-line btn-sm" id="btnExportCsvAll"><svg><use href="#i-download"/></svg>Export all (CSV)</button></div>
+      <div class="search"><input type="search" id="histSearch" placeholder="Search tag ID, type, location or inspector" aria-label="Search reports" /></div>
+      <div class="filters" id="histFilters" role="radiogroup" aria-label="Filter by result">
+        <button type="button" data-f="all" class="on">All</button>
+        <button type="button" data-f="GREEN">Green</button>
+        <button type="button" data-f="YELLOW">Yellow</button>
+        <button type="button" data-f="RED">Red</button>
+      </div>
+      <div class="list" id="historyList"></div>
+    </section>
+
+    <!-- QR TAGS -->
+    <section class="view" id="view-tags" hidden>
+      <div class="page-head">
+        <h1 class="page-title">QR tags</h1>
+        <div class="row-btns">
+          <button type="button" class="btn btn-line btn-sm" id="btnPrintAll"><svg><use href="#i-print"/></svg>Print all labels</button>
+          <button type="button" class="btn btn-ink btn-sm" id="btnNewTag"><svg><use href="#i-plus"/></svg>Create QR tag</button>
+        </div>
+      </div>
+      <p class="muted" style="margin-top:-.4rem">Fix a printed tag to each scaffold. Inspectors scan it with the app to open that scaffold and start the inspection.</p>
+      <div class="tag-grid" id="tagGrid"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="view-settings" hidden>
+      <h1 class="page-title">Settings</h1>
+      <div class="card">
+        <div class="profile-head"><span class="avatar xl" id="profAvatar">?</span><div><b id="profName">Your name</b><span id="profSub"></span></div></div>
+        <form id="profileForm">
+          <div class="grid2">
+            <label class="field"><span>Full name</span><input id="pfName" maxlength="80" /></label>
+            <label class="field"><span>Role</span><input id="pfRole" maxlength="80" placeholder="e.g. Safety officer" /></label>
+            <label class="field"><span>Company</span><input id="pfCompany" maxlength="100" /></label>
+            <label class="field"><span>Default site</span><input id="pfSite" maxlength="120" /></label>
+          </div>
+          <button type="submit" class="btn btn-ink">Save profile</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Demo controls</h2>
+        <div class="set-row"><p><b>Live scan speed</b><small>How fast the demo camera ticks off checks</small></p>
+          <div class="seg" id="speedSeg"><button type="button" data-v="1">Normal</button><button type="button" data-v="2">Fast</button><button type="button" data-v="4">Very fast</button></div></div>
+        <div class="set-row"><p><b>Reset demo</b><small>Restore sample tags and the two sample reports</small></p><button type="button" class="btn btn-line btn-sm" id="btnResetDemo">Reset</button></div>
+      </div>
+
+      <div class="card" id="setTypes">
+        <div class="sec-row" style="margin-top:0"><h2 class="card-title" style="margin:0">Inspection types</h2><button type="button" class="link-btn" id="btnRestoreTypes">Restore built-in</button></div>
+        <p class="muted">Tap one to edit its views and checks.</p>
+        <div class="list" id="typeList"></div>
+        <button type="button" class="btn btn-ink" data-new-type style="margin-top:.8rem"><svg><use href="#i-plus"/></svg>Create inspection type</button>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Install the app</h2>
+        <p class="muted" id="installText">Add Inspection AI to the home screen to open it full screen.</p>
+        <button type="button" class="btn btn-hivis" id="installBtn"><svg><use href="#i-download"/></svg>Install app</button>
+        <div class="install-steps" id="installSteps" hidden></div>
+      </div>
+
+      <div class="card">
+        <h2 class="card-title">Data on this device</h2>
+        <p class="muted" id="dataInfo"></p>
+        <div class="row-btns">
+          <button type="button" class="btn btn-line" id="btnExportAll">Export all (JSON)</button>
+          <button type="button" class="btn btn-danger" id="btnClearHistory">Delete all reports</button>
+          <button type="button" class="btn btn-line" id="btnSignOut">Sign out</button>
+        </div>
+      </div>
+      <p class="about">Inspection AI 5.0 · client demo build. AI results support the inspector, who makes the final decision.<br />Sample site photos: Wikimedia Commons contributors (CC BY-SA).</p>
+    </section>
+  </main>
+
+  <!-- TAB BAR (mobile) -->
+  <nav class="tabbar" id="tabbar" aria-label="Main">
+    <button type="button" data-go="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
+    <button type="button" data-go="setup"><svg><use href="#i-clip"/></svg><span>Inspect</span></button>
+    <button type="button" data-go="scan" class="tab-scan"><i><svg><use href="#i-scan"/></svg></i><span>Scan</span></button>
+    <button type="button" data-go="tags"><svg><use href="#i-tag"/></svg><span>Tags</span></button>
+    <button type="button" data-go="reports"><svg><use href="#i-history"/></svg><span>Reports</span></button>
+  </nav>
+
+  <div id="modalRoot"></div>
+  <div id="printArea"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="js/qr.js?v=5.0.0"></script>
+  <script src="js/demo-data.js?v=5.0.0"></script>
+  <script src="js/media.js?v=5.0.0"></script>
+  <script src="js/app.js?v=5.0.0"></script>
+</body>
+</html>
