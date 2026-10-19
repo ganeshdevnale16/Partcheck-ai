@@ -178,8 +178,8 @@
 
   // seeded reports: built by the app from the scripts above (asset id, scenario, days ago, inspector)
   const SEED_REPORTS = [
-    { assetId: 'SC-014', scenario: 'pass', daysAgo: 1, hour: 9, inspector: 'Rahul Deshmukh', mode: 'live', signed: true, remarks: 'Fit for use. Re-inspect next Monday.' },
-    { assetId: 'SC-027', scenario: 'fail', daysAgo: 2, hour: 15, inspector: 'Rahul Deshmukh', mode: 'photo', signed: true, remarks: 'Red tagged. Scaffold contractor informed to rectify base and edge protection.' },
+    { assetId: 'SC-014', scenario: 'pass', daysAgo: 1, hour: 9, mode: 'live', signed: true, remarks: 'Fit for use. Re-inspect next Monday.' },
+    { assetId: 'SC-027', scenario: 'fail', daysAgo: 2, hour: 15, mode: 'photo', signed: true, remarks: 'Red tagged. Scaffold contractor informed to rectify base and edge protection.' },
   ];
 
   // ---------- simulated "Suggest with AI" for the type editor ----------

@@ -247,7 +247,7 @@
       },
       createdAt: o.createdAt || new Date().toISOString(), item: t.name, description: desc,
       angles: clone(t.angles), general_parts: clone(t.general_parts || []),
-      meta: { inspector: o.inspector || state.profile.name || state.user?.name || 'Inspector', notes: o.notes || '', gps: null, company: state.profile.company || '' },
+      meta: { inspector: o.inspector || state.profile.name || state.user?.name || 'Site inspector', notes: o.notes || '', gps: null, company: state.profile.company || '' },
       shots: {}, result: null, override: { status: '', remarks: '' }, signoff: { done: false, by: '', at: '' }, saved: false,
     };
   }
@@ -261,6 +261,7 @@
     if (prev !== view) leaveHooks.forEach((fn) => fn(prev, view));
     state.view = view;
     $$('.view').forEach((v) => { v.hidden = v.id !== `view-${view}`; });
+    if (prev !== view) document.body.dataset.view = view;
     document.body.classList.toggle('cam', CAM_VIEWS.includes(view));
     const nav = view === 'editor' && state.editor?.returnTo !== 'settings' ? 'setup' : NAV_OF[view];
     $$('.tabbar [data-go], .side-nav [data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === nav));
@@ -353,7 +354,7 @@
     await sleep(650);
     state.user = { name, at: new Date().toISOString() };
     LS.set('ia_user', state.user);
-    if (!state.profile.name) { state.profile.name = name; LS.set('ia_profile', state.profile); }
+    state.profile.name = name; LS.set('ia_profile', state.profile);
     $('#loginBtn').disabled = false; $('#loginBtn').textContent = 'Sign in';
     unlock();
     toast(`Signed in as ${name}`);
@@ -367,7 +368,27 @@
   $('#btnSignOut').addEventListener('click', signOut);
   $('#sideSignOut').addEventListener('click', signOut);
 
+  // sample reports and tag drawings carry the signed-in inspector's name
+  function syncSampleNames() {
+    const name = state.profile.name || state.user?.name || 'Site inspector';
+    window.DEMO_INSPECTOR = name;
+    M.forgetTags();
+    let changed = false;
+    state.history.forEach((h) => {
+      if (!h.sample) return;
+      if (h.meta.inspector !== name) { h.meta.inspector = name; changed = true; }
+      if (h.signoff?.done && h.signoff.by !== name) { h.signoff.by = name; changed = true; }
+      Object.values(h.shots || {}).forEach((sh) => {
+        if (!sh.key?.includes('-tag|')) return;
+        const [k, id, date] = sh.key.split('|');
+        sh.src = M.drawTag(k === 'p-tag' ? 'pass' : 'fail', id, date); changed = true;
+      });
+    });
+    if (changed) saveHistory();
+  }
+
   function unlock() {
+    syncSampleNames();
     $('#loginScreen').hidden = true; $('#splash').hidden = true;
     document.body.classList.remove('locked');
     paintProfile();
@@ -1496,7 +1517,7 @@
   $('#profileForm').addEventListener('submit', (e) => {
     e.preventDefault();
     state.profile = { name: $('#pfName').value.trim(), role: $('#pfRole').value.trim(), company: $('#pfCompany').value.trim(), site: $('#pfSite').value.trim() };
-    LS.set('ia_profile', state.profile); paintProfile(); RENDER.settings(); toast('Profile saved');
+    LS.set('ia_profile', state.profile); syncSampleNames(); paintProfile(); RENDER.settings(); toast('Profile saved');
   });
   $$('#speedSeg button').forEach((b) => b.addEventListener('click', () => { state.speed = +b.dataset.v; LS.set('ia_speed', state.speed); RENDER.settings(); }));
   $('#btnResetDemo').addEventListener('click', async () => {

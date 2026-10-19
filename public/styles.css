@@ -731,3 +731,105 @@ body { letter-spacing: -.003em; }
 .anno .bx.unclear { border-color: #ffcd00; } .anno .bx.unclear em { background: #ffcd00; color: #000; }
 .doc-shell { background: #63666a; }
 .doc-sign .sig { color: #041e42; }
+
+/* ===================================================================
+   COMFORT LAYER – lighter type, softer surfaces, smooth interactions
+   =================================================================== */
+html { font-size: 15px; }
+body { font-size: 15px; line-height: 1.55; color: #222222; font-weight: 400; letter-spacing: 0; text-rendering: optimizeLegibility; }
+
+/* type: normal spacing, 600 instead of 700/800, smaller headings */
+.page-title, .sec-title, .card-title, .type-head-name, .modal-head h2, .hero-body h1, .login-title, .stag-word,
+.kpi b, .brand, .brandline, .analyse h3, .doc h1, .doc h2 { letter-spacing: 0; }
+.page-title { font-size: 1.5rem; font-weight: 600; }
+.page-title::after { width: 32px; height: 3px; margin-top: .5rem; }
+.sec-title { font-size: 1.05rem; font-weight: 600; }
+.card-title { font-size: 1rem; font-weight: 600; }
+.type-head-name { font-size: 1.3rem; font-weight: 600; }
+.modal-head h2 { font-size: 1.25rem; font-weight: 600; }
+.brand { font-size: 1.05rem; font-weight: 600; }
+.brandline { font-size: 1.15rem; font-weight: 600; }
+.hero-body h1 { font-size: 1.9rem; font-weight: 300; }
+@media (min-width: 760px) { .hero-body h1 { font-size: 2.25rem; } }
+.hero-body .greet { font-size: .95rem; }
+.hero-body p.sub { font-size: .95rem; line-height: 1.6; }
+.login-title { font-size: 1.85rem; }
+.login-art figcaption { font-size: 1.7rem; }
+.kpi b { font-size: 1.6rem; font-weight: 600; }
+.kpi span { font-weight: 400; font-size: .85rem; }
+.row-title, .pn, .stag-fields dd, .type-card b, .qtag-top b, .profile-head b { font-weight: 600; }
+.row-sub, .muted, .prule { font-size: .85rem; }
+.btn, .side-scan, .link-btn, .decision button, .filters button, .seg button { font-weight: 600; }
+.status-chip, .pill, .demo-badge, .chip-demo, .minitag, .sev, .crit, .pc, .lv-state, .lv-view, .qpill, .rec-dot { font-weight: 600; }
+.stag-word { font-size: 1.75rem; font-weight: 700; }
+.stag-sub { font-weight: 400; }
+.score-ring b { font-weight: 600; }
+.counts { font-weight: 600; font-size: .88rem; }
+.field > span { font-weight: 600; font-size: .82rem; }
+.tabbar button { font-weight: 500; font-size: .7rem; }
+.side-nav button { font-weight: 500; font-size: .95rem; padding: .65rem .8rem; }
+.plist li { padding: .7rem 0; }
+
+/* softer surfaces */
+.card, .row, .kpi, .type-card, .qtag, .empty, .search input, .field input, .field select, .field textarea,
+.week-chart + .legend { border-radius: 8px; }
+.card, .row, .kpi, .type-card, .qtag { border-color: rgba(0,0,0,.07); box-shadow: 0 1px 2px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04); }
+.kpi { border-top-width: 3px; }
+.btn { border-radius: 6px; }
+.btn-sm { border-radius: 6px; }
+.home-hero { border-radius: 12px; }
+.stage { border-radius: 12px; }
+.modal-card { border-radius: 14px 14px 0 0; }
+@media (min-width: 700px) { .modal-card { border-radius: 14px; } }
+.toast { border-radius: 8px; }
+.sheet { border-radius: 12px; }
+.filters button, .chips button { border-radius: 999px; }
+.seg { border-radius: 8px; } .seg button { border-radius: 6px; }
+.decision button { border-radius: 6px; }
+.status-chip, .pill, .demo-badge, .chip-demo { border-radius: 4px; }
+.minitag { border-radius: 6px 6px 8px 8px; }
+.type-icon { border-radius: 10px; }
+.stag { border-radius: 14px 14px 16px 16px; box-shadow: 0 10px 28px rgba(0,0,0,.12); }
+.side-nav button { border-radius: 6px; }
+.side-scan { border-radius: 6px; }
+.field input, .field select, .field textarea { border-width: 1px; padding: .7rem .85rem; transition: border-color .15s, box-shadow .15s; }
+.field input:focus, .field select:focus, .field textarea:focus { border-color: #86bc25; box-shadow: 0 0 0 3px rgba(134,188,37,.2); }
+.search input { border-width: 1px; }
+.search input:focus { outline: none; border-color: #86bc25; box-shadow: 0 0 0 3px rgba(134,188,37,.2); }
+
+/* smooth interactions */
+.btn, .row, .kpi, .type-card, .qtag, .side-nav button, .tabbar button, .filters button, .chips button, .seg button, .decision button, .link-btn {
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+@media (hover: hover) {
+  .row:hover, button.kpi:hover, .type-card:hover, .qtag:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.08); border-color: rgba(0,0,0,.12); }
+  .btn-line:hover { background: #f1f6e4; border-color: #86bc25; }
+}
+.view:not([hidden]):not(.dark) { animation: viewIn .24s ease-out; }
+@keyframes viewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.modal { animation: fadeIn .18s ease-out; }
+@keyframes fadeIn { from { opacity: 0; } }
+.modal-card { animation: up .24s cubic-bezier(.2,.8,.2,1); }
+
+/* sidebar polish */
+.sidebar { padding: 20px 14px; }
+.sidebar .brand { padding: 0 8px 20px; }
+.side-foot { gap: .6rem; }
+.side-foot b { font-weight: 600; font-size: .9rem; }
+.side-foot span { font-size: .78rem; }
+.side-foot button { font-size: .8rem; border-radius: 6px; padding: .3rem .5rem; }
+.side-foot button:hover { background: #222222; color: #fff; }
+.avatar { font-weight: 600; font-size: .82rem; color: #000; letter-spacing: 0; }
+
+/* tidy spacing */
+main { padding: 1.25rem 1.1rem 2.5rem; }
+.kpis { gap: .8rem; margin-top: 1.1rem; }
+.sec-row { margin: 1.8rem 0 .7rem; }
+.list { gap: .6rem; }
+.card { padding: 1.2rem 1.25rem; }
+@media (min-width: 960px) { main { padding: 1.6rem 2rem 3rem; } }
+
+/* report document keeps print-friendly weights */
+.doc h1 { font-weight: 600; }
+.doc h2 { font-weight: 600; }
+.side-foot .avatar { color: #000; font-size: .85rem; font-weight: 600; flex: none; }

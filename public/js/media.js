@@ -94,6 +94,15 @@
   }
   function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 
+  // inspector name shown on the drawn tag: "Ganesh" or "R. Deshmukh"
+  function tagName() {
+    const n = String(window.DEMO_INSPECTOR || 'Site inspector').trim().split(/\s+/);
+    const s = n.length > 1 ? `${n[0][0]}. ${n[n.length - 1]}` : n[0];
+    return s.length > 16 ? s.slice(0, 15) + '…' : s;
+  }
+  // forget cached tag drawings (after the inspector name changes)
+  function forgetTags() { [...cache.keys()].forEach((k) => { if (k.includes('-tag|')) cache.delete(k); }); }
+
   // ---------- close-up photo of a scaffold tag ----------
   function drawTag(kind, assetId, isoDate) {
     const W = 1200, H = 900;
@@ -143,7 +152,7 @@
     ctx.fillText(pass ? 'This scaffold has been inspected' : 'Unsafe – keep off this scaffold', 0, -th / 2 + 330);
     // fields
     ctx.textAlign = 'left'; ctx.fillStyle = '#000000';
-    const rows = [['Scaffold ID', assetId], ['Inspected', dfmt(inspected)], ['Next due', dfmt(due)], ['Inspector', 'R. Deshmukh']];
+    const rows = [['Scaffold ID', assetId], ['Inspected', dfmt(inspected)], ['Next due', dfmt(due)], ['Inspector', tagName()]];
     rows.forEach(([k, v], i) => {
       const y = -th / 2 + 410 + i * 66;
       ctx.font = '600 24px Arial, sans-serif'; ctx.fillStyle = '#53565a'; ctx.fillText(k, -tw / 2 + 44, y);
@@ -211,5 +220,5 @@
     return c.toDataURL('image/jpeg', 0.82);
   }
 
-  window.MEDIA = { getImage, preload, drawTag, drawGeneric, ready };
+  window.MEDIA = { getImage, preload, drawTag, drawGeneric, ready, forgetTags };
 })();
