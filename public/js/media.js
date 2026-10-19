@@ -129,14 +129,14 @@
     ctx.fillStyle = '#f4f1e6'; roundRect(ctx, -tw / 2, -th / 2, tw, th, 26); ctx.fill();
     ctx.shadowColor = 'transparent';
     // header band
-    ctx.fillStyle = '#1d2830'; roundRect(ctx, -tw / 2, -th / 2, tw, 150, 26); ctx.fill(); ctx.fillRect(-tw / 2, -th / 2 + 110, tw, 40);
+    ctx.fillStyle = '#000000'; roundRect(ctx, -tw / 2, -th / 2, tw, 150, 26); ctx.fill(); ctx.fillRect(-tw / 2, -th / 2 + 110, tw, 40);
     // punched hole
     ctx.fillStyle = '#3b3f45'; ctx.beginPath(); ctx.arc(0, -th / 2 + 50, 22, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = '#c9ccd0'; ctx.lineWidth = 6; ctx.stroke();
-    ctx.fillStyle = '#f5b800'; ctx.font = '700 34px Arial, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#86bc25'; ctx.font = '700 34px Arial, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('SCAFFOLD INSPECTION TAG', 0, -th / 2 + 122);
     // status insert
-    ctx.fillStyle = pass ? '#1e9e5a' : '#d7372f'; roundRect(ctx, -tw / 2 + 36, -th / 2 + 180, tw - 72, 170, 14); ctx.fill();
+    ctx.fillStyle = pass ? '#26890d' : '#da291c'; roundRect(ctx, -tw / 2 + 36, -th / 2 + 180, tw - 72, 170, 14); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.font = '800 76px Arial, sans-serif';
     ctx.fillText(pass ? 'SAFE TO USE' : 'DO NOT USE', 0, -th / 2 + 290);
     ctx.font = '600 26px Arial, sans-serif';

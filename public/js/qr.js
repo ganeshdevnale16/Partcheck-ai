@@ -144,7 +144,7 @@
     return mod;
   }
 
-  function toDataURL(text, size = 512, dark = '#15222c', light = '#ffffff') {
+  function toDataURL(text, size = 512, dark = '#000000', light = '#ffffff') {
     const m = encode(text);
     const n = m.length, quiet = 4, cells = n + quiet * 2;
     const scale = Math.max(1, Math.floor(size / cells));

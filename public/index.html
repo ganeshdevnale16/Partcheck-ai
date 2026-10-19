@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#15222C" />
+  <meta name="theme-color" content="#000000" />
   <meta name="description" content="Inspection AI – scan a QR tag, inspect with the camera, get a Green / Yellow / Red result and a signed report." />
   <title>Inspection AI · Demo</title>
   <link rel="manifest" href="manifest.webmanifest" />
@@ -16,12 +16,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=5.0.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=5.1.0" />
 </head>
 <body class="locked">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="logo" viewBox="0 0 32 40"><path d="M4 6h24v26a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#FFB000"/><circle cx="16" cy="11" r="3" fill="#15222C"/><path d="M10 23l4.5 4.5L23 18" stroke="#15222C" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="logo" viewBox="0 0 32 40"><path d="M4 6h24v26a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#86BC25"/><circle cx="16" cy="11" r="3" fill="#000000"/><path d="M10 23l4.5 4.5L23 18" stroke="#000000" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
     <symbol id="i-scaffold" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 3v18M19 3v18M5 8h14M5 14h14M5 20h14M5 8l14 6"/></g></symbol>
     <symbol id="i-history" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h8l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></g></symbol>
@@ -75,6 +75,7 @@
   <!-- SIDEBAR (desktop) -->
   <aside class="sidebar" aria-label="Main">
     <a class="brand" href="#home" data-go="home"><svg><use href="#logo"/></svg><span>Inspection AI</span> <span class="demo-badge">Demo</span></a>
+    <div class="side-client"><img class="client-logo" src="brand/client-logo.png" alt="" onerror="this.parentNode.remove()" /></div>
     <nav class="side-nav">
       <button type="button" data-go="home"><svg><use href="#i-home"/></svg>Dashboard</button>
       <button type="button" data-go="setup"><svg><use href="#i-clip"/></svg>New inspection</button>
@@ -388,9 +389,9 @@
   <div id="printArea"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/qr.js?v=5.0.0"></script>
-  <script src="js/demo-data.js?v=5.0.0"></script>
-  <script src="js/media.js?v=5.0.0"></script>
-  <script src="js/app.js?v=5.0.0"></script>
+  <script src="js/qr.js?v=5.1.0"></script>
+  <script src="js/demo-data.js?v=5.1.0"></script>
+  <script src="js/media.js?v=5.1.0"></script>
+  <script src="js/app.js?v=5.1.0"></script>
 </body>
 </html>

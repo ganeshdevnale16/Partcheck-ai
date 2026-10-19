@@ -816,9 +816,9 @@
       if (!L.paused && !L.done) {
         const y = ((local % 2200) / 2200) * h;
         const g = ctx.createLinearGradient(0, y - 60 * dpr, 0, y);
-        g.addColorStop(0, 'rgba(255,176,0,0)'); g.addColorStop(1, 'rgba(255,176,0,.22)');
+        g.addColorStop(0, 'rgba(134,188,37,0)'); g.addColorStop(1, 'rgba(134,188,37,.22)');
         ctx.fillStyle = g; ctx.fillRect(0, y - 60 * dpr, w, 60 * dpr);
-        ctx.fillStyle = 'rgba(255,176,0,.7)'; ctx.fillRect(0, y, w, 1.5 * dpr);
+        ctx.fillStyle = 'rgba(134,188,37,.8)'; ctx.fillRect(0, y, w, 1.5 * dpr);
       }
       step.rows.forEach((r, i) => {
         const box = r.box || synthBox(i, step.rows.length);
@@ -855,9 +855,9 @@
     ctx.moveTo(x + l, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + h - l);
     ctx.stroke();
   }
-  const COL = { present: '#22c172', missing: '#ff4b3e', unclear: '#ffc21a' };
+  const COL = { present: '#86bc25', missing: '#da291c', unclear: '#ffcd00' };
   function label(ctx, x, y, text, bg, fg, dpr) {
-    ctx.font = `700 ${12 * dpr}px Barlow, Arial, sans-serif`;
+    ctx.font = `700 ${12 * dpr}px "Open Sans", Arial, sans-serif`;
     const tw = ctx.measureText(text).width + 12 * dpr, th = 20 * dpr;
     const ly = y - th - 3 * dpr < 0 ? Math.max(0, y) + 3 * dpr : y - th - 3 * dpr;
     x = Math.max(4 * dpr, Math.min(x, ctx.canvas.width - tw - 4 * dpr));
@@ -866,21 +866,21 @@
   }
   function drawSeeker(ctx, x, y, w, h, name, dpr, t) {
     ctx.save();
-    ctx.strokeStyle = `rgba(255,176,0,${0.65 + Math.sin(t * 8) * 0.3})`; ctx.lineWidth = 2.5 * dpr;
+    ctx.strokeStyle = `rgba(134,188,37,${0.65 + Math.sin(t * 8) * 0.3})`; ctx.lineWidth = 2.5 * dpr;
     cornerPath(ctx, x, y, w, h, Math.min(w, h) * 0.22);
-    label(ctx, x, y, `Checking: ${name}`, 'rgba(255,176,0,.92)', '#2a1d00', dpr);
+    label(ctx, x, y, `Checking: ${name}`, 'rgba(134,188,37,.95)', '#000', dpr);
     ctx.restore();
   }
   function drawDetection(ctx, x, y, w, h, r, a, dpr) {
     ctx.save(); ctx.globalAlpha = a;
     const c = COL[r.status];
-    if (r.status === 'missing') { ctx.fillStyle = 'rgba(255,75,62,.16)'; ctx.fillRect(x, y, w, h); }
+    if (r.status === 'missing') { ctx.fillStyle = 'rgba(218,41,28,.18)'; ctx.fillRect(x, y, w, h); }
     ctx.strokeStyle = c; ctx.lineWidth = 2.5 * dpr;
     if (r.status === 'unclear') ctx.setLineDash([7 * dpr, 5 * dpr]);
     ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
     const name = splitCheck(r.part).name;
     const mark = r.status === 'present' ? '✓' : r.status === 'missing' ? '✕' : '?';
-    label(ctx, x, y, `${mark} ${name} ${Math.round(r.confidence * 100)}%`, c, r.status === 'unclear' ? '#2a1d00' : '#fff', dpr);
+    label(ctx, x, y, `${mark} ${name} ${Math.round(r.confidence * 100)}%`, c, r.status === 'unclear' ? '#000' : '#fff', dpr);
     ctx.restore();
   }
   function enterStep(i) {
@@ -997,19 +997,19 @@
     const ctx = c.getContext('2d');
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
     const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
-    ctx.strokeStyle = '#15222c'; ctx.lineWidth = 10; rr(20, 20, W - 40, H - 40, 60); ctx.stroke();
+    ctx.strokeStyle = '#000000'; ctx.lineWidth = 10; rr(20, 20, W - 40, H - 40, 60); ctx.stroke();
     ctx.beginPath(); ctx.arc(W / 2, 80, 24, 0, Math.PI * 2); ctx.lineWidth = 6; ctx.stroke();
-    ctx.fillStyle = '#15222c'; rr(70, 140, W - 140, 110, 20); ctx.fill();
-    ctx.fillStyle = '#ffb000'; ctx.font = '800 64px "Barlow Condensed", Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000000'; rr(70, 140, W - 140, 110, 20); ctx.fill();
+    ctx.fillStyle = '#86bc25'; ctx.font = '800 54px "Open Sans", Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('SCAN TO INSPECT', W / 2, 197);
     const qr = await loadImage(qrUrl(tagLink(a.id), 720));
     ctx.drawImage(qr, (W - 600) / 2, 290, 600, 600);
-    ctx.fillStyle = '#15222c'; ctx.font = '800 110px "Barlow Condensed", Arial, sans-serif';
+    ctx.fillStyle = '#000000'; ctx.font = '800 92px "Open Sans", Arial, sans-serif';
     ctx.fillText(a.id, W / 2, 970);
-    ctx.font = '600 36px Barlow, Arial, sans-serif'; ctx.fillStyle = '#41525e';
+    ctx.font = '600 36px "Open Sans", Arial, sans-serif'; ctx.fillStyle = '#41525e';
     ctx.fillText(`${getType(a.typeId)?.name || 'Asset'} · ${a.location}`.slice(0, 44), W / 2, 1050);
-    ctx.setLineDash([12, 10]); ctx.lineWidth = 3; ctx.strokeStyle = '#15222c'; ctx.beginPath(); ctx.moveTo(90, 1110); ctx.lineTo(W - 90, 1110); ctx.stroke(); ctx.setLineDash([]);
-    ctx.font = '700 32px Barlow, Arial, sans-serif'; ctx.fillStyle = '#15222c';
+    ctx.setLineDash([12, 10]); ctx.lineWidth = 3; ctx.strokeStyle = '#000000'; ctx.beginPath(); ctx.moveTo(90, 1110); ctx.lineTo(W - 90, 1110); ctx.stroke(); ctx.setLineDash([]);
+    ctx.font = '700 32px "Open Sans", Arial, sans-serif'; ctx.fillStyle = '#000000';
     ctx.fillText('Inspection AI · open the app and scan', W / 2, 1160);
     return c;
   }
@@ -1264,7 +1264,7 @@
     const L = 97.4;
     return `<svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15.5" stroke="#e6e8e2"/><circle cx="18" cy="18" r="15.5" stroke="${color}" stroke-linecap="round" stroke-dasharray="${L}" stroke-dashoffset="${L * (1 - pct / 100)}"/></svg>`;
   }
-  const LOGO = '<svg viewBox="0 0 32 40" style="width:24px;height:30px"><path d="M4 6h24v26a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#FFB000"/><circle cx="16" cy="11" r="3" fill="#15222C"/><path d="M10 23l4.5 4.5L23 18" stroke="#15222C" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const LOGO = '<svg viewBox="0 0 32 40" style="width:24px;height:30px"><path d="M4 6h24v26a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4z" fill="#86BC25"/><circle cx="16" cy="11" r="3" fill="#000000"/><path d="M10 23l4.5 4.5L23 18" stroke="#000000" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const TAG_COLOR = { GREEN: 'var(--go)', YELLOW: 'var(--caution)', RED: 'var(--stop)' };
 
   function renderResult() {
@@ -1417,7 +1417,7 @@
       <header class="doc-head">
         <div><div class="brandline">${LOGO}<span>Inspection AI</span></div>
           <h1 style="margin-top:3mm">${esc(rec.typeName)} inspection report</h1><div style="color:#4b5a65">${esc(a.site || state.profile.site || '')}${state.profile.company ? ' · ' + esc(state.profile.company) : ''}</div></div>
-        <div class="meta"><b>${esc(no)}</b><br />${esc(fmtDate(r.evaluatedAt))}<br />${rec.mode === 'live' ? 'Live scan' : 'Photo inspection'}</div>
+        <div class="meta"><img class="client-logo" src="brand/client-logo.png" alt="" onerror="this.remove()" /><b>${esc(no)}</b><br />${esc(fmtDate(r.evaluatedAt))}<br />${rec.mode === 'live' ? 'Live scan' : 'Photo inspection'}</div>
       </header>
       <section class="doc-verdict ${tag}"><div><div class="w">${tt.word}</div><p>${rec.override?.status ? 'Final result set by the inspector' : esc(tt.sub)}</p></div>
         <div class="sc"><b>${r.completion}%</b><span>${r.counts.present} OK · ${r.counts.missing} not OK · ${r.counts.unclear} unclear</span></div></section>

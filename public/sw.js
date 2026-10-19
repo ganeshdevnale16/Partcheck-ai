@@ -1,6 +1,6 @@
 // Inspection AI demo – service worker: installable app + screens open without internet.
-const CACHE = 'inspection-ai-demo-v5.0.0';
-const SHELL = ['./', './index.html', './styles.css?v=5.0.0', './js/qr.js?v=5.0.0', './js/demo-data.js?v=5.0.0', './js/media.js?v=5.0.0', './js/app.js?v=5.0.0',
+const CACHE = 'inspection-ai-demo-v5.1.0';
+const SHELL = ['./', './index.html', './styles.css?v=5.1.0', './js/qr.js?v=5.1.0', './js/demo-data.js?v=5.1.0', './js/media.js?v=5.1.0', './js/app.js?v=5.1.0',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/favicon.svg'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((k) => Promise.all(k.filter((x) => x !== CACHE).map((x) => caches.delete(x)))).then(() => self.clients.claim())); });

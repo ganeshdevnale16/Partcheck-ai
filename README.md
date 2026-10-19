@@ -1,4 +1,4 @@
-# Inspection AI – Client Demo (v5.0)
+# Inspection AI – Client Demo (v5.1, Deloitte-style theme)
 
 Demo build of Inspection AI for client presentations. Every screen and flow works like the real product,
 but **no AI backend or API keys are needed**: the camera shows real scaffold site photos and the AI findings
@@ -53,3 +53,10 @@ scripts/download-demo-images.mjs
 render-server.js         static server
 ```
 Reset everything anytime: **Settings → Demo controls → Reset**.
+
+## Theme (v5.1)
+Black / white / cool grey with green accent (#86BC25), Open Sans, square corners.
+Colours live in the `:root` block at the top of `public/styles.css`; the theme layer is at the end of that file.
+
+**Client logo (optional):** put a file at `public/brand/client-logo.png`. It appears in the sidebar and on every
+PDF report header. If the file is missing nothing shows. Only use a client's logo with their permission.
