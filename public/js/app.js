@@ -880,7 +880,7 @@
     ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
     const name = splitCheck(r.part).name;
     const mark = r.status === 'present' ? '✓' : r.status === 'missing' ? '✕' : '?';
-    label(ctx, x, y, `${mark} ${name} ${Math.round(r.confidence * 100)}%`, c, r.status === 'unclear' ? '#000' : '#fff', dpr);
+    label(ctx, x, y, `${mark} ${name} ${Math.round(r.confidence * 100)}%`, c, r.status === 'missing' ? '#fff' : '#000', dpr);
     ctx.restore();
   }
   function enterStep(i) {
@@ -1006,7 +1006,7 @@
     ctx.drawImage(qr, (W - 600) / 2, 290, 600, 600);
     ctx.fillStyle = '#000000'; ctx.font = '800 92px "Open Sans", Arial, sans-serif';
     ctx.fillText(a.id, W / 2, 970);
-    ctx.font = '600 36px "Open Sans", Arial, sans-serif'; ctx.fillStyle = '#41525e';
+    ctx.font = '600 36px "Open Sans", Arial, sans-serif'; ctx.fillStyle = '#53565a';
     ctx.fillText(`${getType(a.typeId)?.name || 'Asset'} · ${a.location}`.slice(0, 44), W / 2, 1050);
     ctx.setLineDash([12, 10]); ctx.lineWidth = 3; ctx.strokeStyle = '#000000'; ctx.beginPath(); ctx.moveTo(90, 1110); ctx.lineTo(W - 90, 1110); ctx.stroke(); ctx.setLineDash([]);
     ctx.font = '700 32px "Open Sans", Arial, sans-serif'; ctx.fillStyle = '#000000';

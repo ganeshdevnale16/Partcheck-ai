@@ -136,19 +136,19 @@
     ctx.fillStyle = '#86bc25'; ctx.font = '700 34px Arial, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('SCAFFOLD INSPECTION TAG', 0, -th / 2 + 122);
     // status insert
-    ctx.fillStyle = pass ? '#26890d' : '#da291c'; roundRect(ctx, -tw / 2 + 36, -th / 2 + 180, tw - 72, 170, 14); ctx.fill();
+    ctx.fillStyle = pass ? '#046a38' : '#da291c'; roundRect(ctx, -tw / 2 + 36, -th / 2 + 180, tw - 72, 170, 14); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.font = '800 76px Arial, sans-serif';
     ctx.fillText(pass ? 'SAFE TO USE' : 'DO NOT USE', 0, -th / 2 + 290);
     ctx.font = '600 26px Arial, sans-serif';
     ctx.fillText(pass ? 'This scaffold has been inspected' : 'Unsafe – keep off this scaffold', 0, -th / 2 + 330);
     // fields
-    ctx.textAlign = 'left'; ctx.fillStyle = '#1d2830';
+    ctx.textAlign = 'left'; ctx.fillStyle = '#000000';
     const rows = [['Scaffold ID', assetId], ['Inspected', dfmt(inspected)], ['Next due', dfmt(due)], ['Inspector', 'R. Deshmukh']];
     rows.forEach(([k, v], i) => {
       const y = -th / 2 + 410 + i * 66;
-      ctx.font = '600 24px Arial, sans-serif'; ctx.fillStyle = '#5b6b78'; ctx.fillText(k, -tw / 2 + 44, y);
-      ctx.font = '700 34px Arial, sans-serif'; ctx.fillStyle = '#1d2830'; ctx.fillText(v, -tw / 2 + 230, y);
-      ctx.strokeStyle = 'rgba(29,40,48,.18)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-tw / 2 + 44, y + 20); ctx.lineTo(tw / 2 - 44, y + 20); ctx.stroke();
+      ctx.font = '600 24px Arial, sans-serif'; ctx.fillStyle = '#53565a'; ctx.fillText(k, -tw / 2 + 44, y);
+      ctx.font = '700 34px Arial, sans-serif'; ctx.fillStyle = '#000000'; ctx.fillText(v, -tw / 2 + 230, y);
+      ctx.strokeStyle = 'rgba(0,0,0,.15)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-tw / 2 + 44, y + 20); ctx.lineTo(tw / 2 - 44, y + 20); ctx.stroke();
     });
     if (!pass) {
       ctx.save(); ctx.rotate(-0.32); ctx.globalAlpha = 0.82;

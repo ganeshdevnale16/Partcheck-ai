@@ -1,4 +1,4 @@
-# Inspection AI – Client Demo (v5.1, Deloitte-style theme)
+# Inspection AI – Client Demo (v5.2, Deloitte palette)
 
 Demo build of Inspection AI for client presentations. Every screen and flow works like the real product,
 but **no AI backend or API keys are needed**: the camera shows real scaffold site photos and the AI findings
@@ -54,9 +54,19 @@ render-server.js         static server
 ```
 Reset everything anytime: **Settings → Demo controls → Reset**.
 
-## Theme (v5.1)
-Black / white / cool grey with green accent (#86BC25), Open Sans, square corners.
-Colours live in the `:root` block at the top of `public/styles.css`; the theme layer is at the end of that file.
+## Theme (v5.2) – Deloitte brand palette
+| Use | Colour |
+|---|---|
+| Brand accent, main buttons, "OK" boxes on photos | Deloitte Green #86BC25 (black text) |
+| Sidebar, headers, camera screens | Black #000000, Dark Gray #222222 |
+| Page background / borders / secondary text | Light Gray #E6E6E6, Cool Gray 2 #D0D0CE, Cool Gray 11 #53565A |
+| PASS (Green tag) | Deep Green #046A38 (white text, 6.7:1) |
+| Light green panels | Pale Green #F1F6E4 |
+| FAIL / CAUTION (functional only) | Red #DA291C, Yellow #FFCD00 |
+| Secondary accents | Teal 6 #007680, Teal 1 #DDEFE8, Blue 7 #012169, Blue 8 #041E42 |
+
+Bright Green / Bright Teal / Bright Blue are not used. Red and yellow appear only as pass/fail status.
+All colours are in the `:root` block at the top of `public/styles.css`. Font: Open Sans.
 
 **Client logo (optional):** put a file at `public/brand/client-logo.png`. It appears in the sidebar and on every
 PDF report header. If the file is missing nothing shows. Only use a client's logo with their permission.
