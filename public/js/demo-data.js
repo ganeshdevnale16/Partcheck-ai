@@ -29,12 +29,13 @@
 
   // ---------- inspection types ----------
   const SCAFFOLD = {
-    id: 'type-scaffold', builtin: true, module: 'scaffold', safety: true,
+    id: 'type-scaffold', builtin: true, rev: 2, module: 'scaffold', safety: true,
     name: 'Scaffold', description: 'Access scaffold: base, structure, working platform, ladder and tag',
     idLabel: 'Scaffold ID / tag no.',
     angles: [
       { name: 'Base & foundation', guidance: 'Low angle along the bottom: all uprights, base plates and the ground', parts: [
         '! Base plates :: a steel base plate under every visible standard (upright)',
+        'Base jacks :: adjustable base jacks not bent or over-extended, no heavy rust on the thread or stem',
         '! Sole boards / firm ground :: base plates rest on timber sole boards on firm, level ground – no bricks, blocks or loose packing',
         'Standards plumb :: uprights look vertical, not leaning, bent or sinking',
       ] },
@@ -45,13 +46,13 @@
       ] },
       { name: 'Working platform', guidance: 'At platform level: deck, edges and rails in view', parts: [
         '! Platform fully boarded :: boards or decks cover the full width, no gaps, broken or loose boards',
-        '! Guardrail :: top guardrail on every open side of the working platform',
-        '! Mid rail :: intermediate rail between guardrail and toe board on open sides',
-        '! Toe boards :: toe boards fitted along the open edges of the platform',
+        '! Top rail :: top rail at about 1 m on every open side (top rail + mid rail + toe board = guardrail)',
+        '! Mid rail :: mid rail between the top rail and the toe board on every open side',
+        '! Toe boards :: toe boards fitted along every open edge of the platform',
         'Platform clear :: no heavy stacks of material, debris or trip hazards on the platform',
       ] },
       { name: 'Access ladder', guidance: 'The ladder and the landing where it reaches the platform', parts: [
-        '! Access ladder :: ladder is tied / secured and extends about 1 m above the landing',
+        '! Access ladder :: ladder is tied / secured, lands on a proper landing platform and extends about 1 m above it',
       ] },
       { name: 'Scaffold tag', guidance: 'Close-up of the tag or status board at the access point', parts: [
         'Scaffold tag :: an inspection tag or status board is displayed at the access point',
@@ -98,20 +99,21 @@
 
   // ---------- scripted AI findings for scaffold ----------
   // status: present (OK) / missing (Not OK) / unclear. box = [x, y, w, h] as fractions of the photo.
-  const S = (status, confidence, evidence, box) => ({ status, confidence, evidence, box });
+  const S = (status, confidence, evidence, box, on) => ({ status, confidence, evidence, box, on });
   const SCAFFOLD_SCRIPT = {
     pass: {
       images: { 'Base & foundation': 'p-base', 'Full elevation': 'p-elev', 'Working platform': 'p-plat', 'Access ladder': 'p-ladder', 'Scaffold tag': 'p-tag' },
       checks: {
         'Base plates': S('present', 0.97, 'Steel base plates seated under all 6 visible standards', [0.06, 0.66, 0.34, 0.26]),
+        'Base jacks': S('present', 0.93, 'Base jacks set with short extension; threads clean, no rust', null),
         'Sole boards / firm ground': S('present', 0.94, 'Timber sole boards run under the base plates on level, compacted ground', [0.42, 0.72, 0.44, 0.2]),
         'Standards plumb': S('present', 0.92, 'Uprights are vertical along the run; no lean or settlement seen', [0.18, 0.08, 0.2, 0.62]),
         'Ledgers and transoms': S('present', 0.96, 'Ledgers present at every lift – 4 lifts counted, none missing', [0.1, 0.2, 0.78, 0.5]),
         'Bracing': S('present', 0.93, 'Diagonal façade bracing runs across alternate bays, bottom to top', [0.52, 0.16, 0.3, 0.6]),
         'Ties to structure': S('present', 0.9, 'Tie tubes visible at lifts 2 and 4, fixed into the façade', [0.08, 0.3, 0.22, 0.3]),
         'Platform fully boarded': S('present', 0.95, 'Platform close-boarded across the full width; no gaps or loose boards', [0.12, 0.52, 0.7, 0.18]),
-        'Guardrail': S('present', 0.97, 'Top guardrail fitted along the open edge at about 1 m', [0.08, 0.3, 0.84, 0.1]),
-        'Mid rail': S('present', 0.93, 'Mid rail fitted between guardrail and toe board on the open side', [0.08, 0.42, 0.84, 0.08]),
+        'Top rail': S('present', 0.97, 'Top rail fitted along the open edge at about 1 m', [0.08, 0.3, 0.84, 0.1]),
+        'Mid rail': S('present', 0.93, 'Mid rail fitted between the top rail and toe board on the open side', [0.08, 0.42, 0.84, 0.08]),
         'Toe boards': S('present', 0.91, 'Toe boards fitted along the outer edge of the platform', [0.08, 0.5, 0.84, 0.07]),
         'Platform clear': S('present', 0.89, 'Only light hand tools on the deck; walkway clear', [0.3, 0.55, 0.4, 0.2]),
         'Access ladder': S('present', 0.92, 'Ladder tied at the top, extends about 1 m above the landing', [0.38, 0.12, 0.22, 0.76]),
@@ -128,13 +130,14 @@
       images: { 'Base & foundation': 'f-base', 'Full elevation': 'f-elev', 'Working platform': 'f-plat', 'Access ladder': 'f-ladder', 'Scaffold tag': 'f-tag' },
       checks: {
         'Base plates': S('present', 0.86, 'Base plates visible under the front standards', [0.08, 0.68, 0.3, 0.24]),
+        'Base jacks': S('present', 0.8, 'Base jacks visible under the front standards; no damage seen', null),
         'Sole boards / firm ground': S('missing', 0.93, 'Two base plates rest on loose bricks and packing instead of sole boards', [0.4, 0.66, 0.36, 0.26]),
         'Standards plumb': S('missing', 0.84, 'Corner standard leans outward and the run is distorted near the base', [0.62, 0.1, 0.24, 0.6]),
         'Ledgers and transoms': S('present', 0.88, 'Ledgers present at each lift on the visible bays', [0.1, 0.22, 0.76, 0.46]),
         'Bracing': S('unclear', 0.52, 'Façade bracing not visible on the right-hand bays – netting blocks the view', [0.56, 0.2, 0.34, 0.5]),
         'Ties to structure': S('missing', 0.87, 'No ties seen on the top two lifts where the wall side is visible', [0.06, 0.06, 0.3, 0.3]),
         'Platform fully boarded': S('missing', 0.91, 'Gap of about two boards near the ladder access; one board overhangs unsupported', [0.36, 0.5, 0.3, 0.16]),
-        'Guardrail': S('present', 0.85, 'Top guardrail fitted on the long side', [0.06, 0.28, 0.6, 0.1]),
+        'Top rail': S('present', 0.85, 'Top rail fitted on the long side', [0.06, 0.28, 0.6, 0.1]),
         'Mid rail': S('missing', 0.9, 'No mid rail on the north open side of the platform', [0.6, 0.36, 0.34, 0.12]),
         'Toe boards': S('missing', 0.92, 'Toe board missing along the outer edge of the platform', [0.1, 0.5, 0.8, 0.08]),
         'Platform clear': S('missing', 0.88, 'Stacked materials and loose debris on the deck – trip hazard', [0.22, 0.56, 0.34, 0.2]),
@@ -166,36 +169,37 @@
     images: { 'Base & foundation': 's-base', 'Full elevation': 's-elev', 'Working platform': 's-plat', 'Access ladder': 's-ladder', 'Scaffold tag': 's-ladder' },
     shotTimes: { 'Base & foundation': '11:08:48', 'Access ladder': '11:08:56', 'Scaffold tag': '11:08:56', 'Working platform': '11:09:02', 'Full elevation': '11:09:09' },
     checks: {
-      'Base plates': S('present', 0.9, 'Base plate with screw jack seated flat on the concrete floor', [0.36, 0.47, 0.24, 0.14]),
-      'Sole boards / firm ground': S('present', 0.84, 'Base plate sits on a solid, level concrete floor – firm footing (sole board not needed on concrete)', [0.08, 0.62, 0.84, 0.32]),
-      'Standards plumb': S('present', 0.8, 'Standard above the base jack stands vertical; no settlement on the floor', [0.32, 0.0, 0.18, 0.32]),
+      'Base plates': S('present', 0.9, 'Base plate seated flat on the concrete floor', [0.36, 0.5, 0.24, 0.11]),
+      'Base jacks': S('missing', 0.88, 'Adjustable base jack is heavily rusted on the stem and thread', [0.4, 0.36, 0.12, 0.15]),
+      'Sole boards / firm ground': S('present', 0.84, 'Base plate sits on a solid, level concrete floor – firm footing (sole board not needed on concrete)', [0.08, 0.64, 0.84, 0.3]),
+      'Standards plumb': S('present', 0.8, 'Standard above the base jack stands vertical; no settlement on the floor', [0.33, 0.0, 0.15, 0.2]),
       'Ledgers and transoms': S('present', 0.83, 'Horizontal ledgers present at each lift along the visible bays', [0.2, 0.3, 0.55, 0.42]),
       'Bracing': S('present', 0.87, 'Diagonal face braces plus a long raking brace from the ground to mid-height', [0.1, 0.33, 0.5, 0.52]),
       'Ties to structure': S('unclear', 0.48, 'No ties to the wall visible in this view – confirm on site', [0.05, 0.12, 0.25, 0.45]),
       'Platform fully boarded': S('present', 0.8, 'Slatted steel planks cover the full platform width; no missing planks seen from below', [0.05, 0.15, 0.75, 0.42]),
-      'Guardrail': S('present', 0.74, 'Top rail visible above the platform along the long side', [0.28, 0.0, 0.6, 0.12]),
-      'Mid rail': S('unclear', 0.5, 'Mid rail not visible from below – check from platform level', [0.55, 0.13, 0.3, 0.12]),
-      'Toe boards': S('missing', 0.76, 'No toe boards seen along the open edge of the platform', [0.38, 0.44, 0.44, 0.12]),
+      'Top rail': S('present', 0.82, 'Top rail fitted along the open side of the platform', [0.28, 0.0, 0.6, 0.12]),
+      'Mid rail': S('present', 0.78, 'Mid rail fitted between the top rail and the platform', null),
+      'Toe boards': S('missing', 0.86, 'No toe board along the open edge of the platform – guardrail is incomplete',
+        { poly: [[0.686, 0.386], [0.653, 0.444], [0.339, 0.361], [0.097, 0.246], [0.163, 0.13], [0.684, 0.359]] }, 'Access ladder'),
       'Platform clear': S('present', 0.68, 'No stacked material seen on the platform through the open planks', [0.1, 0.17, 0.4, 0.24]),
-      'Access ladder': S('missing', 0.78, 'Ladder leans on the scaffold with no tie at the top and barely reaches above the platform', [0.48, 0.3, 0.2, 0.68]),
+      'Access ladder': S('missing', 0.86, 'Ladder rests against the scaffold with no visible tie, almost no extension above the platform level, and no landing platform at the top of the ladder', [0.33, 0.15, 0.64, 0.37]),
       'Scaffold tag': S('missing', 0.82, 'No inspection tag or status board visible at the ladder access point', [0.45, 0.62, 0.3, 0.36]),
       'Couplers / clamps': S('present', 0.8, 'Couplers fitted at the base node; none hanging loose', [0.28, 0.19, 0.26, 0.17]),
-      'Tube condition': S('missing', 0.84, 'Heavy rust on the base jack stem and lower standard; cut tube end left at floor level', [0.38, 0.38, 0.14, 0.11]),
+      'Tube condition': S('present', 0.78, 'Tubes straight; no bent or cracked tubes seen', null),
     },
-    generalFoundIn: { 'Couplers / clamps': 'Base & foundation', 'Tube condition': 'Base & foundation' },
+    generalFoundIn: { 'Couplers / clamps': 'Base & foundation', 'Tube condition': 'Full elevation' },
     defects: [
-      { angle: 'Access ladder', description: 'Ladder resting against the scaffold with no visible tie and almost no extension above the platform', severity: 'high' },
-      { angle: 'Base & foundation', description: 'Heavy rust on the base jack stem and lower standard', severity: 'medium' },
-      { angle: 'Working platform', description: 'No toe boards along the open platform edge – dropped-object risk over the walkway', severity: 'medium' },
+      { angle: 'Access ladder', description: 'No landing platform at the top of the ladder; ladder not tied and with almost no extension above the platform level', severity: 'high' },
+      { angle: 'Working platform', description: 'Toe board missing along the open platform edge – guardrail incomplete, dropped-object risk', severity: 'medium' },
+      { angle: 'Base & foundation', description: 'Adjustable base jack heavily rusted on the stem and thread', severity: 'medium' },
       { angle: 'Full elevation', description: 'Loose blocks lying beside the drain channel near the standards', severity: 'low' },
-      { angle: 'Base & foundation', description: 'Cut tube end left at floor level – trip and impact point', severity: 'low' },
     ],
-    summary: 'Scaffold is NOT ready for use. The base sits on a firm concrete floor and the structure is well braced, but the access ladder is not secured, toe boards are missing on the platform and the base jack and standards are heavily rusted. Ties to the wall and mid rails could not be confirmed from these photos, and no inspection tag was seen. The base area is correctly barricaded.',
+    summary: 'Scaffold is NOT ready for use. The base sits on a firm concrete floor, the structure is well braced and the top rail and mid rail are in place, but there is no landing platform at the top of the ladder, the ladder is not secured, the toe board is missing on the open platform edge and the adjustable base jack is heavily rusted. Ties to the wall could not be confirmed from these photos and no inspection tag was seen. The base area is correctly barricaded.',
     recommendations: [
       'Keep the area barricaded and fix a red "DO NOT USE" tag at the access point until the points below are closed.',
-      'Tie the ladder at the top and extend it about 1 m above the platform, or provide a secured ladder access bay.',
-      'Fit toe boards, and mid rails where missing, on all open sides of the working platform.',
-      'Clean and check the rusted base jack and standard; replace any tube or jack with deep corrosion; remove the cut tube end at floor level.',
+      'Provide a proper landing platform at the top of the ladder; tie the ladder and extend it about 1 m above the landing.',
+      'Fit toe boards along every open edge of the working platform to complete the guardrail.',
+      'Replace the rusted adjustable base jack (or clean and inspect the thread and stem, and replace if corroded).',
       'Confirm ties to the building at the required spacing and make sure loose blocks near the drain channel are not used as packing.',
       'Re-inspect with photos taken from platform level and of the tag, then re-tag before use.',
     ],

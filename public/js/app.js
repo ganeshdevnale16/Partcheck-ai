@@ -40,6 +40,15 @@
     del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } },
   };
   const ANY = 'Any view';
+  // evidence outline: [x, y, w, h] rectangle or { poly: [[x, y], ...] }, all as fractions of the photo
+  const bboxOf = (b) => {
+    if (!b) return null;
+    if (Array.isArray(b)) return b;
+    const xs = b.poly.map((p) => p[0]), ys = b.poly.map((p) => p[1]);
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
+  };
+  // the photo (view) a check's evidence is shown on
+  const viewOf = (c) => c.foundIn || c.group;
   // scaffold duty classes and safe working load (SWL, kg)
   const DUTIES = ['Light', 'Medium', 'Heavy', 'Special'];
   const normDuty = (d) => {
@@ -68,7 +77,7 @@
     if (!Number.isInteger(n) || n < 1 || n > 100000) { input.classList.add('invalid'); input.focus(); throw new Error('SWL must be a whole number in kg, between 1 and 100,000.'); }
     return String(n);
   }
-  const SEED_VERSION = 'ia_seed_v5';
+  const SEED_VERSION = 'ia_seed_v6';
 
   // ---------- state ----------
   const state = {
@@ -180,6 +189,7 @@
       const row = { id: uid(), group, part, critical: c.critical, status: s.status, confidence: s.confidence, note: s.evidence, box: s.box || null };
       if (s.status === 'present') row.note += ' · confirmed by second check';
       if (group === ANY) row.foundIn = sc?.generalFoundIn?.[c.name] || rec.angles[0]?.name || '';
+      else if (s.on) row.foundIn = s.on;
       return row;
     };
     rec.angles.forEach((a) => a.parts.forEach((p, i) => rows.push(make(a.name, p, i))));
@@ -237,7 +247,9 @@
   // ---------- seeding: sample tags + two sample reports ----------
   async function seed(force = false) {
     if (!force && LS.get(SEED_VERSION, false)) return;
-    state.assets = D.ASSETS.map((a) => ({ ...a, createdAt: new Date(Date.now() - a.createdDaysAgo * 864e5).toISOString() }));
+    const seeded = D.ASSETS.map((a) => ({ ...a, createdAt: new Date(Date.now() - a.createdDaysAgo * 864e5).toISOString() }));
+    // a reset restores the sample tags; an upgrade keeps every tag the user has (and their edits) and only adds missing samples
+    state.assets = force ? seeded : [...state.assets, ...seeded.filter((a) => !state.assets.some((x) => x.id === a.id))];
     const keep = force ? [] : state.history.filter((h) => !h.sample);
     const samples = [];
     for (const s of D.SEED_REPORTS) {
@@ -268,10 +280,11 @@
   }
   // report built from the client's real site photos (taken 21 Oct 2026, 11:08–11:09)
   function seedSite(force = false) {
-    const FLAG = 'ia_seed_site_v1';
+    const FLAG = 'ia_seed_site_v3';
     if (!force && LS.get(FLAG, false)) return;
     const def = D.ASSETS.find((a) => a.id === 'SC-040');
     let asset = getAsset('SC-040');
+    if (asset && force && def) Object.assign(asset, { ...def, createdAt: asset.createdAt });
     if (!asset && def) { asset = { ...def, createdAt: new Date(2026, 9, 18, 10, 0).toISOString() }; state.assets.unshift(asset); }
     if (!asset) return;
     const t = getType('type-scaffold') || D.TYPES[0];
@@ -851,7 +864,7 @@
     const rec = state.cur;
     rec.mode = 'live';
     L.rows = scriptedChecklist(rec);
-    L.steps = rec.angles.map((a) => ({ view: a.name, rows: [...L.rows.filter((r) => r.group === a.name), ...L.rows.filter((r) => r.group === ANY && r.foundIn === a.name)] })).filter((s) => s.rows.length);
+    L.steps = rec.angles.map((a) => ({ view: a.name, rows: L.rows.filter((r) => viewOf(r) === a.name) })).filter((s) => s.rows.length);
     // general checks whose view has no checks of its own go to the last step
     const placed = new Set(L.steps.flatMap((s) => s.rows.map((r) => r.id)));
     L.rows.filter((r) => !placed.has(r.id)).forEach((r) => L.steps[L.steps.length - 1]?.rows.push(r));
@@ -888,7 +901,7 @@
     L.rows.forEach((r) => { if (r._at !== undefined && L.t >= r._at && !L.resolved.has(r.id)) resolveRow(r); });
     // camera target = next pending check of this step (looks like the inspector moving the phone)
     const pending = step.rows.find((r) => !L.resolved.has(r.id));
-    const tb = pending?.box || step.rows[step.rows.length - 1]?.box;
+    const tb = bboxOf(pending?.box) || bboxOf(step.rows.filter((r) => r.box).pop()?.box);
     const tx = tb ? tb[0] + tb[2] / 2 : 0.5, ty = tb ? tb[1] + tb[3] / 2 : 0.5;
     const tz = pending ? 1.28 : 1.08;
     const k = L.paused ? 0 : Math.min(1, dt / 900);
@@ -912,12 +925,14 @@
         ctx.fillStyle = g; ctx.fillRect(0, y - 60 * dpr, w, 60 * dpr);
         ctx.fillStyle = 'rgba(134,188,37,.8)'; ctx.fillRect(0, y, w, 1.5 * dpr);
       }
+      const scripted = Boolean(scriptFor(rec));
       step.rows.forEach((r, i) => {
-        const box = r.box || synthBox(i, step.rows.length);
+        const box = r.box ? bboxOf(r.box) : scripted ? null : synthBox(i, step.rows.length);
+        if (!box) { if (r === pending) drawSeeker(ctx, w * 0.3, h * 0.35, w * 0.4, h * 0.3, splitCheck(r.part).name, dpr, tt); return; }
         const [x, y, bw, bh] = fit.map(box);
         if (L.resolved.has(r.id)) {
           const age = Math.min(1, (L.t - r._at) / 350);
-          drawDetection(ctx, x, y, bw, bh, r, age, dpr);
+          drawDetection(ctx, x, y, bw, bh, r, age, dpr, r.box.poly ? r.box.poly.map((p) => fit.map([p[0], p[1], 0, 0]).slice(0, 2)) : null);
         } else if (r === pending) {
           const slotStart = r._at - T.per + 250;
           const p = Math.max(0, Math.min(1, (L.t - slotStart) / (T.per * 0.75)));
@@ -931,9 +946,8 @@
     }
     // HUD
     const done = L.resolved.size, total = L.rows.length;
-    const pct = total ? Math.round((done / total) * 100) : 0;
-    $('#lvPct').textContent = pct + '%';
-    $('#lvRingFg').style.strokeDashoffset = String(97.4 * (1 - pct / 100));
+    $('#lvPct').textContent = `${done}/${total}`;
+    $('#lvRingFg').style.strokeDashoffset = String(97.4 * (1 - (total ? done / total : 0)));
     $('#lvStats').textContent = `${done} of ${total} checks · ${Math.round((Date.now() - L.startedAt) / 1000)} s`;
     if (!L.done && done === total && L.t >= L.total - 200) completeLive();
     L.raf = requestAnimationFrame(liveTick);
@@ -963,16 +977,18 @@
     label(ctx, x, y, `Checking: ${name}`, 'rgba(134,188,37,.95)', '#000', dpr);
     ctx.restore();
   }
-  function drawDetection(ctx, x, y, w, h, r, a, dpr) {
+  function drawDetection(ctx, x, y, w, h, r, a, dpr, poly) {
     ctx.save(); ctx.globalAlpha = a;
     const c = COL[r.status];
-    if (r.status === 'missing') { ctx.fillStyle = 'rgba(218,41,28,.18)'; ctx.fillRect(x, y, w, h); }
+    ctx.beginPath();
+    if (poly) { poly.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py))); ctx.closePath(); } else ctx.rect(x, y, w, h);
+    if (r.status === 'missing') { ctx.fillStyle = 'rgba(218,41,28,.18)'; ctx.fill(); }
     ctx.strokeStyle = c; ctx.lineWidth = 2.5 * dpr;
     if (r.status === 'unclear') ctx.setLineDash([7 * dpr, 5 * dpr]);
-    ctx.strokeRect(x, y, w, h); ctx.setLineDash([]);
+    ctx.stroke(); ctx.setLineDash([]);
     const name = splitCheck(r.part).name;
     const mark = r.status === 'present' ? '✓' : r.status === 'missing' ? '✕' : '?';
-    label(ctx, x, y, `${mark} ${name} ${Math.round(r.confidence * 100)}%`, c, r.status === 'missing' ? '#fff' : '#000', dpr);
+    label(ctx, x, y, `${mark} ${name}`, c, r.status === 'missing' ? '#fff' : '#000', dpr);
     ctx.restore();
   }
   function enterStep(i) {
@@ -1017,7 +1033,7 @@
       return `<div class="lv-group"><h4><span>${esc(g)}</span><span>${okN}/${rows.length}</span></h4><ul>${rows.map((r) => {
         const st = L.resolved.has(r.id) ? r.status : r === pending ? 'active' : '';
         const icon = st === 'present' ? '✓' : st === 'missing' ? '✕' : st === 'unclear' ? '?' : '';
-        return `<li class="${st}"><i>${icon}</i><span>${esc(splitCheck(r.part).name)}</span>${L.resolved.has(r.id) ? `<small>${Math.round(r.confidence * 100)}%</small>` : ''}</li>`;
+        return `<li class="${st}"><i>${icon}</i><span>${esc(splitCheck(r.part).name)}</span></li>`;
       }).join('')}</ul></div>`;
     }).join('');
     const active = $('#lvList li.active');
@@ -1342,23 +1358,27 @@
   const ICON = { present: '✓', missing: '✕', unclear: '?' };
   const STATUS_TEXT = { present: 'OK', missing: 'Not OK', unclear: 'Unclear' };
   function boxesFor(rec, group) {
-    return (rec.result?.checklist || []).filter((c) => c.box && (c.group === group || (c.group === ANY && c.foundIn === group)));
+    return (rec.result?.checklist || []).filter((c) => c.box && viewOf(c) === group);
   }
   function annoHtml(rec, group, shot, zoomable = true) {
     if (!shot) return `<div class="noimg">${group === ANY ? 'All views' : 'No photo'}</div>`;
     const boxes = shot.custom ? [] : boxesFor(rec, group);
     return `<div class="anno" ${zoomable ? `data-zoom="${esc(group)}"` : ''}><img src="${esc(shot.src)}" ${shot.key ? `data-key="${esc(shot.key)}"` : ''} alt="${esc(group)} photo" />
-      ${boxes.map((c) => `<span class="bx ${c.status} ${c.box[1] < 0.09 ? 'low' : ''}" style="left:${c.box[0] * 100}%;top:${c.box[1] * 100}%;width:${c.box[2] * 100}%;height:${c.box[3] * 100}%"><em>${ICON[c.status]} ${esc(splitCheck(c.part).name)}</em></span>`).join('')}
+      ${boxes.map((c) => { const b = bboxOf(c.box); const lbl = `<em>${ICON[c.status]} ${esc(splitCheck(c.part).name)}</em>`;
+        return Array.isArray(c.box)
+          ? `<span class="bx ${c.status} ${b[1] < 0.09 ? 'low' : ''}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%">${lbl}</span>`
+          : `<span class="bx poly ${c.status} ${b[1] < 0.09 ? 'low' : ''}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%">${lbl}</span>`; }).join('')}
+      ${boxes.some((c) => !Array.isArray(c.box)) ? `<svg class="polys" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${boxes.filter((c) => !Array.isArray(c.box)).map((c) => `<polygon class="${c.status}" points="${c.box.poly.map((p) => `${p[0] * 100},${p[1] * 100}`).join(' ')}" />`).join('')}</svg>` : ''}
       <div class="wm">${esc(wmText(rec, group, shot.ts))}</div></div>`;
   }
   function partRow(c) {
     const sc = splitCheck(c.part);
-    const where = c.group === ANY && c.foundIn ? `Seen in ${c.foundIn}. ` : '';
+    const where = c.foundIn && c.foundIn !== c.group ? `Seen in the ${c.foundIn.toLowerCase()} photo. ` : '';
     return `<li class="${c.status}"><span class="ic ${c.status}" aria-label="${STATUS_TEXT[c.status]}">${ICON[c.status]}</span>
       <span><span class="pn">${c.critical ? '<span class="crit">Critical</span>' : ''}${esc(sc.name)}</span>
       ${sc.rule ? `<span class="prule">Must be: ${esc(sc.rule)}</span>` : ''}
       <span class="pnote">${esc(STATUS_TEXT[c.status] + '. ' + where + cap(c.note || ''))}</span></span>
-      <span class="pc">${Math.round((c.confidence || 0) * 100)}%</span></li>`;
+</li>`;
   }
   function ringSvg(pct, color) {
     const L = 97.4;
@@ -1401,7 +1421,7 @@
                 <div><dt>Inspected by</dt><dd>${esc(rec.meta.inspector || '–')}</dd></div>
                 <div><dt>Date</dt><dd>${esc(fmtDate(r.evaluatedAt))}</dd></div>
               </dl>
-              <div class="score"><div class="score-ring">${ringSvg(r.completion, TAG_COLOR[tag])}<b>${r.completion}%</b></div>
+              <div class="score"><div class="score-ring">${ringSvg(r.completion, TAG_COLOR[tag])}<b>${r.counts.present}/${r.counts.total}</b></div>
                 <div class="counts"><span class="ok">${r.counts.present} OK</span><span class="bad">${r.counts.missing} not OK</span><span class="unc">${r.counts.unclear} unclear</span></div></div>
               ${rec.signoff?.done ? `<p class="stag-note signed">✓ Signed off by ${esc(rec.signoff.by)}, ${esc(fmtDate(rec.signoff.at))}</p>` : `<p class="stag-note">AI result. ${isSafety(rec) ? 'Needs sign-off by a competent person.' : 'Confirm and save.'}</p>`}
             </div>
@@ -1500,8 +1520,8 @@
   }
   function exportCsv(list) {
     const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const head = ['Report no.', 'Inspection type', 'ID', 'Location', 'Inspector', 'Date', 'Result', 'Completion %', 'View', 'Check', 'Critical', 'Status', 'Confidence %', 'Evidence', 'Remarks'];
-    const rows = list.flatMap((rec) => rec.result.checklist.map((c) => [rec.reportNo || '', rec.typeName, rec.asset.id, rec.asset.location, rec.meta.inspector, fmtDate(rec.result.evaluatedAt), TAG_LABEL[resultTag(rec)], rec.result.completion, c.group, splitCheck(c.part).name, c.critical ? 'yes' : '', STATUS_TEXT[c.status], Math.round((c.confidence || 0) * 100), c.note, rec.override?.remarks]));
+    const head = ['Report no.', 'Inspection type', 'ID', 'Location', 'Inspector', 'Date', 'Result', 'Checks OK', 'View', 'Check', 'Critical', 'Status', 'Evidence', 'Remarks'];
+    const rows = list.flatMap((rec) => rec.result.checklist.map((c) => [rec.reportNo || '', rec.typeName, rec.asset.id, rec.asset.location, rec.meta.inspector, fmtDate(rec.result.evaluatedAt), TAG_LABEL[resultTag(rec)], `${rec.result.counts.present} of ${rec.result.counts.total}`, c.group, splitCheck(c.part).name, c.critical ? 'yes' : '', STATUS_TEXT[c.status], c.note, rec.override?.remarks]));
     const csv = '\uFEFF' + [head, ...rows].map((r) => r.map(q).join(',')).join('\r\n');
     download(list.length === 1 ? `${slug(list[0].typeName)}-${slug(list[0].asset.id)}.csv` : `inspection-reports-${isoDay(Date.now())}.csv`, csv, 'text/csv;charset=utf-8');
   }
@@ -1520,7 +1540,7 @@
         <div class="meta"><img class="client-logo" src="brand/client-logo.png" alt="" onerror="this.remove()" /><b>${esc(no)}</b><br />${esc(fmtDate(r.evaluatedAt))}<br />${rec.mode === 'live' ? 'Live scan' : 'Photo inspection'}</div>
       </header>
       <section class="doc-verdict ${tag}"><div><div class="w">${tt.word}</div><p>${rec.override?.status ? 'Final result set by the inspector' : esc(tt.sub)}</p></div>
-        <div class="sc"><b>${r.completion}%</b><span>${r.counts.present} OK · ${r.counts.missing} not OK · ${r.counts.unclear} unclear</span></div></section>
+        <div class="sc"><b>${r.counts.present}/${r.counts.total}</b><span>checks OK · ${r.counts.missing} not OK · ${r.counts.unclear} unclear</span></div></section>
       <div class="summary-box">${esc(ai.summary || '')}</div>
       <div class="doc-grid">
         <div><h2>Asset</h2><table class="kvt"><tbody>
@@ -1536,12 +1556,12 @@
           ${rec.meta.gps ? `<tr><td>GPS</td><td>${rec.meta.gps.lat}, ${rec.meta.gps.lng}</td></tr>` : ''}</tbody></table></div>
       </div>
       ${findings.length ? `<h2>Findings</h2><table><thead><tr><th style="width:26%">Check</th><th style="width:16%">View</th><th style="width:11%">Status</th><th>Evidence</th></tr></thead><tbody>
-        ${findings.map((c) => `<tr><td>${c.critical ? '<b style="color:var(--stop)">Critical · </b>' : ''}${esc(splitCheck(c.part).name)}</td><td>${esc(c.group === ANY ? c.foundIn || 'Any view' : c.group)}</td><td class="st ${c.status}">${STATUS_TEXT[c.status]}</td><td>${esc(cap(c.note))}</td></tr>`).join('')}</tbody></table>` : ''}
+        ${findings.map((c) => `<tr><td>${c.critical ? '<b style="color:var(--stop)">Critical · </b>' : ''}${esc(splitCheck(c.part).name)}</td><td>${esc(c.group === ANY ? c.foundIn || 'Any view' : c.group)}${c.foundIn && c.group !== ANY && c.foundIn !== c.group ? `<br /><small>photo: ${esc(c.foundIn)}</small>` : ''}</td><td class="st ${c.status}">${STATUS_TEXT[c.status]}</td><td>${esc(cap(c.note))}</td></tr>`).join('')}</tbody></table>` : ''}
       ${ai.defects?.length ? `<h2>Defects</h2><table><thead><tr><th style="width:14%">Severity</th><th>Description</th><th style="width:22%">Where</th></tr></thead><tbody>${ai.defects.map((d) => `<tr><td class="st ${d.severity === 'high' ? 'missing' : 'unclear'}">${esc(cap(d.severity))}</td><td>${esc(d.description)}</td><td>${esc(d.angle || '')}</td></tr>`).join('')}</tbody></table>` : ''}
       ${ai.recommendations?.length ? `<div class="avoid"><h2>${tag === 'GREEN' ? 'Next steps' : 'Corrective actions required'}</h2><ol style="margin:0;padding-left:5mm">${ai.recommendations.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
-      ${groups.length ? `<h2>Photo evidence</h2><div class="doc-photos">${groups.map((g) => `<figure>${annoHtml(rec, g, rec.shots[g], false)}<figcaption><b>${esc(g)}</b> – ${r.checklist.filter((c) => c.group === g && c.status === 'present').length} of ${r.checklist.filter((c) => c.group === g).length} OK</figcaption></figure>`).join('')}</div>` : ''}
-      <h2>Full checklist</h2><table><thead><tr><th style="width:18%">View</th><th style="width:27%">Check</th><th style="width:10%">Status</th><th style="width:8%">Conf.</th><th>Evidence</th></tr></thead><tbody>
-        ${r.checklist.map((c) => `<tr><td>${esc(c.group)}</td><td>${c.critical ? '<b>! </b>' : ''}${esc(splitCheck(c.part).name)}</td><td class="st ${c.status}">${STATUS_TEXT[c.status]}</td><td>${Math.round((c.confidence || 0) * 100)}%</td><td>${esc(cap(c.note))}</td></tr>`).join('')}</tbody></table>
+      ${groups.length ? `<h2>Photo evidence</h2><div class="doc-photos">${groups.map((g) => `<figure>${annoHtml(rec, g, rec.shots[g], false)}<figcaption><b>${esc(g)}</b>${r.checklist.filter((c) => c.group === g).length ? ` – ${r.checklist.filter((c) => c.group === g && c.status === 'present').length} of ${r.checklist.filter((c) => c.group === g).length} OK` : ''}</figcaption></figure>`).join('')}</div>` : ''}
+      <h2>Full checklist</h2><table><thead><tr><th style="width:18%">View</th><th style="width:27%">Check</th><th style="width:11%">Status</th><th>Evidence</th></tr></thead><tbody>
+        ${r.checklist.map((c) => `<tr><td>${esc(c.group)}</td><td>${c.critical ? '<b>! </b>' : ''}${esc(splitCheck(c.part).name)}</td><td class="st ${c.status}">${STATUS_TEXT[c.status]}</td><td>${esc(cap(c.note))}</td></tr>`).join('')}</tbody></table>
       <div class="avoid"><h2>Sign-off</h2>
         ${rec.override?.remarks ? `<p><b>Remarks:</b> ${esc(rec.override.remarks)}</p>` : ''}
         <div class="doc-sign">
@@ -1728,7 +1748,12 @@
   (async () => {
     if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
     // ensure built-in types exist (in case of old saved data)
-    D.TYPES.forEach((b) => { if (!getType(b.id)) state.types.push(clone(b)); });
+    D.TYPES.forEach((b) => {
+      const cur = getType(b.id);
+      if (!cur) state.types.push(clone(b));
+      else if (cur.builtin && (cur.rev || 1) < (b.rev || 1)) Object.assign(cur, clone(b)); // newer built-in checklist
+    });
+    saveTypes();
     await seed();
     seedSite();
     migrateAssets(); saveAssets(); saveHistory();
