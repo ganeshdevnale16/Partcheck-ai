@@ -29,6 +29,7 @@
   function sourcesFor(key) {
     const list = [];
     if (local && local[key]) list.push({ src: 'demo/images/' + local[key], cors: true });
+    if (D.LOCAL && D.LOCAL[key]) list.push({ src: 'demo/images/' + D.LOCAL[key], cors: true });
     const c = D.COMMONS[key];
     if (c) {
       const fname = c.path.split('/').pop();
@@ -146,13 +147,14 @@
     ctx.fillText('SCAFFOLD INSPECTION TAG', 0, -th / 2 + 122);
     // status insert
     ctx.fillStyle = pass ? '#046a38' : '#da291c'; roundRect(ctx, -tw / 2 + 36, -th / 2 + 180, tw - 72, 170, 14); ctx.fill();
-    ctx.fillStyle = '#fff'; ctx.font = '800 76px Arial, sans-serif';
+    ctx.fillStyle = '#fff'; ctx.font = '800 66px Arial, sans-serif';
     ctx.fillText(pass ? 'SAFE TO USE' : 'DO NOT USE', 0, -th / 2 + 290);
     ctx.font = '600 26px Arial, sans-serif';
     ctx.fillText(pass ? 'This scaffold has been inspected' : 'Unsafe – keep off this scaffold', 0, -th / 2 + 330);
     // fields
     ctx.textAlign = 'left'; ctx.fillStyle = '#000000';
-    const rows = [['Scaffold ID', assetId], ['Inspected', dfmt(inspected)], ['Next due', dfmt(due)], ['Inspector', tagName()]];
+    const swl = (window.DEMO_SWL || {})[assetId];
+    const rows = [['Scaffold ID', assetId], ['Inspected', dfmt(inspected)], ['Next due', dfmt(due)], ['Inspector', tagName()], ...(swl ? [['SWL', `${Number(swl).toLocaleString('en-IN')} kg`]] : [])];
     rows.forEach(([k, v], i) => {
       const y = -th / 2 + 410 + i * 66;
       ctx.font = '600 24px Arial, sans-serif'; ctx.fillStyle = '#53565a'; ctx.fillText(k, -tw / 2 + 44, y);

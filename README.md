@@ -1,4 +1,4 @@
-# Inspection AI – Client Demo (v5.3, Deloitte palette, comfort UI)
+# Inspection AI – Client Demo (v5.5, real site photo scenario)
 
 Demo build of Inspection AI for client presentations. Every screen and flow works like the real product,
 but **no AI backend or API keys are needed**: the camera shows real scaffold site photos and the AI findings
@@ -53,6 +53,11 @@ scripts/download-demo-images.mjs
 render-server.js         static server
 ```
 Reset everything anytime: **Settings → Demo controls → Reset**.
+
+## Real site photos (v5.5)
+Tag **SC-040** uses the client's own site photos (`public/demo/images/site-*.jpg`) with findings written from those photos.
+A ready-made report for it (21 Oct 2026, Red – do not use) is in Reports. Any scaffold tag can use these photos:
+open the tag and set **Demo outcome → Site photos**, or pick **Site photos** on the details screen.
 
 ## Theme (v5.2) – Deloitte brand palette
 | Use | Colour |

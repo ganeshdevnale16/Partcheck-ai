@@ -22,6 +22,8 @@
     'x-site':   { file: 'London Scaffolding At Tate Modern (142728139).jpeg', path: 'a/a2/London_Scaffolding_At_Tate_Modern_%28142728139%29.jpeg' },
     'x-net':    { file: 'Manila, City of Makati - construction scaffolding and protective platic net.jpg', path: 'b/b5/Manila%2C_City_of_Makati_-_construction_scaffolding_and_protective_platic_net.jpg' },
   };
+  // real site photos supplied by the client (public/demo/images)
+  const LOCAL = { 's-base': 'site-base.jpg', 's-elev': 'site-elev.jpg', 's-plat': 'site-plat.jpg', 's-ladder': 'site-ladder.jpg' };
   // tag close-ups are drawn by the app (media.js) so they show the right tag ID and date
   const GENERATED = { 'p-tag': 'tag-pass', 'f-tag': 'tag-fail' };
 
@@ -159,6 +161,46 @@
     },
   };
 
+  // findings written from the client's real site photos (inspected 21 Oct 2026)
+  SCAFFOLD_SCRIPT.site = {
+    images: { 'Base & foundation': 's-base', 'Full elevation': 's-elev', 'Working platform': 's-plat', 'Access ladder': 's-ladder', 'Scaffold tag': 's-ladder' },
+    shotTimes: { 'Base & foundation': '11:08:48', 'Access ladder': '11:08:56', 'Scaffold tag': '11:08:56', 'Working platform': '11:09:02', 'Full elevation': '11:09:09' },
+    checks: {
+      'Base plates': S('present', 0.9, 'Base plate with screw jack seated flat on the concrete floor', [0.36, 0.47, 0.24, 0.14]),
+      'Sole boards / firm ground': S('present', 0.84, 'Base plate sits on a solid, level concrete floor – firm footing (sole board not needed on concrete)', [0.08, 0.62, 0.84, 0.32]),
+      'Standards plumb': S('present', 0.8, 'Standard above the base jack stands vertical; no settlement on the floor', [0.32, 0.0, 0.18, 0.32]),
+      'Ledgers and transoms': S('present', 0.83, 'Horizontal ledgers present at each lift along the visible bays', [0.2, 0.3, 0.55, 0.42]),
+      'Bracing': S('present', 0.87, 'Diagonal face braces plus a long raking brace from the ground to mid-height', [0.1, 0.33, 0.5, 0.52]),
+      'Ties to structure': S('unclear', 0.48, 'No ties to the wall visible in this view – confirm on site', [0.05, 0.12, 0.25, 0.45]),
+      'Platform fully boarded': S('present', 0.8, 'Slatted steel planks cover the full platform width; no missing planks seen from below', [0.05, 0.15, 0.75, 0.42]),
+      'Guardrail': S('present', 0.74, 'Top rail visible above the platform along the long side', [0.28, 0.0, 0.6, 0.12]),
+      'Mid rail': S('unclear', 0.5, 'Mid rail not visible from below – check from platform level', [0.55, 0.13, 0.3, 0.12]),
+      'Toe boards': S('missing', 0.76, 'No toe boards seen along the open edge of the platform', [0.38, 0.44, 0.44, 0.12]),
+      'Platform clear': S('present', 0.68, 'No stacked material seen on the platform through the open planks', [0.1, 0.17, 0.4, 0.24]),
+      'Access ladder': S('missing', 0.78, 'Ladder leans on the scaffold with no tie at the top and barely reaches above the platform', [0.48, 0.3, 0.2, 0.68]),
+      'Scaffold tag': S('missing', 0.82, 'No inspection tag or status board visible at the ladder access point', [0.45, 0.62, 0.3, 0.36]),
+      'Couplers / clamps': S('present', 0.8, 'Couplers fitted at the base node; none hanging loose', [0.28, 0.19, 0.26, 0.17]),
+      'Tube condition': S('missing', 0.84, 'Heavy rust on the base jack stem and lower standard; cut tube end left at floor level', [0.38, 0.38, 0.14, 0.11]),
+    },
+    generalFoundIn: { 'Couplers / clamps': 'Base & foundation', 'Tube condition': 'Base & foundation' },
+    defects: [
+      { angle: 'Access ladder', description: 'Ladder resting against the scaffold with no visible tie and almost no extension above the platform', severity: 'high' },
+      { angle: 'Base & foundation', description: 'Heavy rust on the base jack stem and lower standard', severity: 'medium' },
+      { angle: 'Working platform', description: 'No toe boards along the open platform edge – dropped-object risk over the walkway', severity: 'medium' },
+      { angle: 'Full elevation', description: 'Loose blocks lying beside the drain channel near the standards', severity: 'low' },
+      { angle: 'Base & foundation', description: 'Cut tube end left at floor level – trip and impact point', severity: 'low' },
+    ],
+    summary: 'Scaffold is NOT ready for use. The base sits on a firm concrete floor and the structure is well braced, but the access ladder is not secured, toe boards are missing on the platform and the base jack and standards are heavily rusted. Ties to the wall and mid rails could not be confirmed from these photos, and no inspection tag was seen. The base area is correctly barricaded.',
+    recommendations: [
+      'Keep the area barricaded and fix a red "DO NOT USE" tag at the access point until the points below are closed.',
+      'Tie the ladder at the top and extend it about 1 m above the platform, or provide a secured ladder access bay.',
+      'Fit toe boards, and mid rails where missing, on all open sides of the working platform.',
+      'Clean and check the rusted base jack and standard; replace any tube or jack with deep corrosion; remove the cut tube end at floor level.',
+      'Confirm ties to the building at the required spacing and make sure loose blocks near the drain channel are not used as packing.',
+      'Re-inspect with photos taken from platform level and of the tag, then re-tag before use.',
+    ],
+  };
+
   // ---------- live scan hints (shown while the demo camera pans) ----------
   const LIVE_HINTS = {
     'Base & foundation': ['Tilt down to the base plates', 'Hold steady', 'Pan along the bottom'],
@@ -170,9 +212,10 @@
 
   // ---------- seeded QR tags (assets) ----------
   const ASSETS = [
-    { id: 'SC-014', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower A – east elevation', height: '12', lifts: '6', duty: 'General duty', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 20 },
-    { id: 'SC-027', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower B – north face', height: '18', lifts: '9', duty: 'Heavy duty', erector: 'Apex Access Pvt Ltd', scenario: 'fail', createdDaysAgo: 34 },
-    { id: 'SC-031', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Podium – ramp area', height: '6', lifts: '3', duty: 'Light duty', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 6 },
+    { id: 'SC-014', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower A – east elevation', height: '12', lifts: '6', duty: 'Medium', swl: '600', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 20 },
+    { id: 'SC-027', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower B – north face', height: '18', lifts: '9', duty: 'Heavy', swl: '900', erector: 'Apex Access Pvt Ltd', scenario: 'fail', createdDaysAgo: 34 },
+    { id: 'SC-031', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Podium – ramp area', height: '6', lifts: '3', duty: 'Light', swl: '300', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 6 },
+    { id: 'SC-040', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Service yard – drain side wall', height: '8', lifts: '4', duty: 'Medium', swl: '450', erector: 'Site contractor', scenario: 'site', createdDaysAgo: 3 },
     { id: 'FE-108', typeId: 'type-extinguisher', site: 'Orchid Heights, Pune', location: 'Site office – entrance', scenario: 'pass', createdDaysAgo: 60 },
   ];
 
@@ -210,5 +253,5 @@
     ], general: ['SWL marking :: safe working load marked'] },
   ];
 
-  window.DEMO = { COMMONS, GENERATED, TYPES, SCAFFOLD_SCRIPT, LIVE_HINTS, ASSETS, SEED_REPORTS, SUGGEST_LIBRARY };
+  window.DEMO = { LOCAL, COMMONS, GENERATED, TYPES, SCAFFOLD_SCRIPT, LIVE_HINTS, ASSETS, SEED_REPORTS, SUGGEST_LIBRARY };
 })();

@@ -40,6 +40,23 @@
     del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } },
   };
   const ANY = 'Any view';
+  // scaffold duty classes and safe working load (SWL, kg)
+  const DUTIES = ['Light', 'Medium', 'Heavy', 'Special'];
+  const normDuty = (d) => {
+    const t = String(d || '').trim().replace(/\s*duty$/i, '');
+    if (/^general$/i.test(t)) return 'Medium';
+    return DUTIES.find((x) => x.toLowerCase() === t.toLowerCase()) || '';
+  };
+  const dutyText = (d) => (normDuty(d) ? `${normDuty(d)} duty` : '');
+  const swlText = (v) => (Number(v) > 0 ? `${Number(v).toLocaleString('en-IN')} kg` : '');
+  function readSwl(input) {
+    const raw = String(input.value || '').trim();
+    input.classList.remove('invalid');
+    if (!raw) return '';
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 1 || n > 100000) { input.classList.add('invalid'); input.focus(); throw new Error('SWL must be a whole number in kg, between 1 and 100,000.'); }
+    return String(n);
+  }
   const SEED_VERSION = 'ia_seed_v5';
 
   // ---------- state ----------
@@ -63,7 +80,7 @@
   const getType = (id) => state.types.find((t) => t.id === id);
   const getAsset = (id) => state.assets.find((a) => a.id.toLowerCase() === String(id || '').toLowerCase());
   const saveTypes = () => LS.set('ia_types', state.types);
-  const saveAssets = () => LS.set('ia_assets', state.assets);
+  const saveAssets = () => { window.DEMO_SWL = Object.fromEntries(state.assets.filter((a) => a.swl).map((a) => [a.id, a.swl])); return LS.set('ia_assets', state.assets); };
   const countChecks = (t) => t.angles.reduce((n, a) => n + a.parts.length, 0) + (t.general_parts || []).length;
   function saveHistory() {
     let ok = LS.set('ia_history', state.history);
@@ -102,7 +119,8 @@
   const TAG_LABEL = { GREEN: 'Green', YELLOW: 'Yellow', RED: 'Red', NONE: 'Not inspected' };
 
   // ---------- SCRIPTED AI ENGINE ----------
-  function scriptFor(rec) { return rec.module === 'scaffold' ? D.SCAFFOLD_SCRIPT[rec.scenario === 'fail' ? 'fail' : 'pass'] : null; }
+  function scriptFor(rec) { return rec.module === 'scaffold' ? D.SCAFFOLD_SCRIPT[D.SCAFFOLD_SCRIPT[rec.scenario] ? rec.scenario : 'pass'] : null; }
+  const SCEN_LABEL = { pass: 'Pass', fail: 'Fail', site: 'Site photos' };
 
   // Which demo photo the camera shows for a view
   const genericCache = new Map();
@@ -193,6 +211,17 @@
     };
   }
 
+  // old saved data: "General duty" -> Medium, fill SWL of the sample tags
+  function migrateAssets() {
+    const seedSwl = Object.fromEntries(D.ASSETS.map((a) => [a.id, a]));
+    state.assets.forEach((a) => {
+      a.duty = normDuty(a.duty);
+      if (!a.swl && seedSwl[a.id]?.swl && a.typeId === seedSwl[a.id].typeId) { a.swl = seedSwl[a.id].swl; if (!a.duty) a.duty = seedSwl[a.id].duty; }
+    });
+    state.history.forEach((h) => { if (h.asset) { h.asset.duty = normDuty(h.asset.duty); if (!h.asset.swl && seedSwl[h.asset.id]) h.asset.swl = seedSwl[h.asset.id].swl || ''; } });
+    window.DEMO_SWL = Object.fromEntries(state.assets.filter((a) => a.swl).map((a) => [a.id, a.swl]));
+  }
+
   // ---------- seeding: sample tags + two sample reports ----------
   async function seed(force = false) {
     if (!force && LS.get(SEED_VERSION, false)) return;
@@ -222,9 +251,37 @@
       samples.push(rec);
     }
     state.history = [...keep, ...samples].sort((a, b) => new Date(b.result?.evaluatedAt || b.createdAt) - new Date(a.result?.evaluatedAt || a.createdAt));
-    saveAssets(); saveHistory();
+    migrateAssets(); saveAssets(); saveHistory();
     LS.set(SEED_VERSION, true);
   }
+  // report built from the client's real site photos (taken 21 Oct 2026, 11:08–11:09)
+  function seedSite(force = false) {
+    const FLAG = 'ia_seed_site_v1';
+    if (!force && LS.get(FLAG, false)) return;
+    const def = D.ASSETS.find((a) => a.id === 'SC-040');
+    let asset = getAsset('SC-040');
+    if (!asset && def) { asset = { ...def, createdAt: new Date(2026, 9, 18, 10, 0).toISOString() }; state.assets.unshift(asset); }
+    if (!asset) return;
+    const t = getType('type-scaffold') || D.TYPES[0];
+    const sc = D.SCAFFOLD_SCRIPT.site;
+    const at = (hms) => { const [h, m, x] = hms.split(':').map(Number); return new Date(2026, 9, 21, h, m, x).toISOString(); };
+    const rec = blankRecord(t, { asset, scenario: 'site', mode: 'photo', createdAt: at('11:08:40'), reason: 'Before first use / handover' });
+    rec.sample = true;
+    rec.angles.forEach((a) => {
+      const key = sc.images[a.name];
+      if (key) rec.shots[a.name] = { src: 'demo/images/' + D.LOCAL[key], key, ts: at(sc.shotTimes[a.name]), quality: { ok: true } };
+    });
+    rec.result = buildResult(rec, scriptedChecklist(rec), { evaluatedAt: at('11:14:20') });
+    rec.override = { status: '', remarks: 'Red tagged at the ladder access. Contractor informed to secure the ladder, fit toe boards and replace the rusted base jack before re-inspection.' };
+    rec.signoff = { done: true, by: rec.meta.inspector, at: at('11:18:05') };
+    rec.saved = true;
+    rec.reportNo = reportNo(rec);
+    state.history = [...state.history.filter((h) => !(h.sample && h.scenario === 'site')), rec]
+      .sort((a, b) => new Date(b.result?.evaluatedAt || b.createdAt) - new Date(a.result?.evaluatedAt || a.createdAt));
+    saveAssets(); saveHistory();
+    LS.set(FLAG, true);
+  }
+
   function reportNo(rec) {
     const d = new Date(rec.result?.evaluatedAt || rec.createdAt);
     return `IR-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${(rec.asset.id || 'X').replace(/[^A-Z0-9]/gi, '').slice(-4).toUpperCase()}${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
@@ -235,14 +292,14 @@
     const asset = o.asset || {};
     const scaffold = t.module === 'scaffold';
     const location = o.location ?? asset.location ?? '';
-    const desc = [t.description, asset.duty && `Duty: ${asset.duty}`, asset.height && `Height about ${asset.height} m`, asset.lifts && `${asset.lifts} lifts`].filter(Boolean).join('. ');
+    const desc = [t.description, normDuty(o.duty ?? asset.duty) && dutyText(o.duty ?? asset.duty), swlText(o.swl ?? asset.swl) && `SWL ${swlText(o.swl ?? asset.swl)}`, asset.height && `Height about ${asset.height} m`, asset.lifts && `${asset.lifts} lifts`].filter(Boolean).join('. ');
     return {
       id: uid(), mode: o.mode || 'photo', typeId: t.id, typeName: t.name, module: t.module || '', safety: Boolean(t.safety),
       idLabel: t.idLabel || 'Asset ID', scenario: o.scenario || 'pass', assetId: asset.id && getAsset(asset.id) ? asset.id : null,
       asset: {
         id: o.id ?? asset.id ?? '', location, site: asset.site || state.profile.site || '',
         height: scaffold ? (o.height ?? asset.height ?? '') : '', lifts: scaffold ? (o.lifts ?? asset.lifts ?? '') : '',
-        duty: scaffold ? (o.duty ?? asset.duty ?? '') : '', erector: scaffold ? (o.erector ?? asset.erector ?? '') : '',
+        duty: scaffold ? normDuty(o.duty ?? asset.duty ?? '') : '', swl: scaffold ? (o.swl ?? asset.swl ?? '') : '', erector: scaffold ? (o.erector ?? asset.erector ?? '') : '',
         lastInspection: o.lastInspection || '', reason: o.reason || 'Routine check',
       },
       createdAt: o.createdAt || new Date().toISOString(), item: t.name, description: desc,
@@ -510,11 +567,11 @@
   // ---------- STEP 2: details ----------
   function fillFormFromAsset(a) {
     $('#sfId').value = a.id || ''; $('#sfLocation').value = a.location || '';
-    $('#sfHeight').value = a.height || ''; $('#sfLifts').value = a.lifts || ''; $('#sfDuty').value = a.duty || ''; $('#sfErector').value = a.erector || '';
+    $('#sfHeight').value = a.height || ''; $('#sfLifts').value = a.lifts || ''; $('#sfDuty').value = normDuty(a.duty); $('#sfSwl').value = a.swl || ''; $('#sfErector').value = a.erector || '';
     const last = lastReportFor(a.id); $('#sfLast').value = last ? isoDay(last.result.evaluatedAt) : '';
   }
   function resetSetupForm() {
-    ['#sfId', '#sfLocation', '#sfHeight', '#sfLifts', '#sfErector', '#sfLast', '#sfNotes'].forEach((s) => { $(s).value = ''; });
+    ['#sfId', '#sfLocation', '#sfHeight', '#sfLifts', '#sfSwl', '#sfErector', '#sfLast', '#sfNotes'].forEach((s) => { $(s).value = ''; });
     $('#sfDuty').value = ''; $('#sfId').classList.remove('invalid');
   }
   function paintScenario() { $$('#scenarioSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.scenario)); }
@@ -531,6 +588,8 @@
     $('#sfId').placeholder = t.module === 'scaffold' ? 'e.g. SC-014' : 'e.g. A-102';
     $('#scaffoldExtras').hidden = t.module !== 'scaffold';
     if (!$('#sfInspector').value) $('#sfInspector').value = state.profile.name || state.user?.name || '';
+    $('#scenarioSeg [data-v="site"]').hidden = t.module !== 'scaffold';
+    if (t.module !== 'scaffold' && state.scenario === 'site') state.scenario = 'pass';
     paintScenario();
     $('#planSteps').innerHTML = t.angles.map((v) => {
       const crit = v.parts.filter((p) => splitCheck(p).critical).length;
@@ -551,7 +610,7 @@
     const rec = blankRecord(t, {
       asset: asset.id ? asset : { site: state.profile.site }, mode, scenario: state.scenario,
       id, location: $('#sfLocation').value.trim() || asset.location || state.profile.site || '',
-      height: $('#sfHeight').value, lifts: $('#sfLifts').value, duty: $('#sfDuty').value, erector: $('#sfErector').value.trim(),
+      height: $('#sfHeight').value, lifts: $('#sfLifts').value, duty: $('#sfDuty').value, swl: t.module === 'scaffold' ? readSwl($('#sfSwl')) : '', erector: $('#sfErector').value.trim(),
       lastInspection: $('#sfLast').value, reason: $('#sfReason').value, inspector: $('#sfInspector').value.trim(), notes: $('#sfNotes').value.trim(),
     });
     if ($('#sfGps').checked) getGps(rec);
@@ -1079,13 +1138,14 @@
         <div class="grid2" id="tfScaffold">
           <label class="field"><span>Height (m)</span><input id="tfH" type="number" min="0" step="0.5" inputmode="decimal" /></label>
           <label class="field"><span>Lifts</span><input id="tfL" type="number" min="0" inputmode="numeric" /></label>
-          <label class="field"><span>Duty</span><select id="tfDuty"><option value="">Not known</option><option>Light duty</option><option>General duty</option><option>Heavy duty</option></select></label>
+          <label class="field"><span>Duty</span><select id="tfDuty"><option value="">Not known</option>${DUTIES.map((d) => `<option value="${d}">${d}</option>`).join('')}</select></label>
+          <label class="field"><span>SWL (kg)</span><input id="tfSwl" type="number" min="1" max="100000" step="1" inputmode="numeric" placeholder="e.g. 600" /></label>
           <label class="field"><span>Erected by</span><input id="tfErector" maxlength="80" /></label>
         </div>
-        <div class="scenario-box"><p><b>Demo outcome</b><br />Result shown when this tag is inspected.</p><div class="seg" id="tfSeg"><button type="button" data-v="pass" class="on">Pass</button><button type="button" data-v="fail">Fail</button></div></div>
+        <div class="scenario-box"><p><b>Demo outcome</b><br />Result shown when this tag is inspected.</p><div class="seg" id="tfSeg"><button type="button" data-v="pass" class="on">Pass</button><button type="button" data-v="fail">Fail</button><button type="button" data-v="site">Site photos</button></div></div>
         <div class="modal-actions"><button type="submit" class="btn btn-hivis btn-block"><svg><use href="#i-qr"/></svg>Create QR tag</button></div>
       </form>`, (m) => {
-      const paintType = () => { const t = getType($('#tfType', m).value); $('#tfScaffold', m).hidden = t?.module !== 'scaffold'; const pre = t?.module === 'scaffold' ? 'SC' : (t?.name || 'AS').replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase(); $('#tfId', m).value = nextTagId(pre); };
+      const paintType = () => { const t = getType($('#tfType', m).value); $('#tfScaffold', m).hidden = t?.module !== 'scaffold'; $('#tfSeg [data-v="site"]', m).hidden = t?.module !== 'scaffold'; if (t?.module !== 'scaffold' && scenario === 'site') $('#tfSeg [data-v="pass"]', m).click(); const pre = t?.module === 'scaffold' ? 'SC' : (t?.name || 'AS').replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase(); $('#tfId', m).value = nextTagId(pre); };
       $('#tfType', m).addEventListener('change', paintType);
       $$('#tfSeg button', m).forEach((b) => b.addEventListener('click', () => { scenario = b.dataset.v; $$('#tfSeg button', m).forEach((x) => x.classList.toggle('on', x === b)); }));
       $('#tagForm', m).addEventListener('submit', (e) => {
@@ -1095,7 +1155,9 @@
         if (!id) { $('#tfId', m).classList.add('invalid'); return toast('Enter a tag ID.', true); }
         if (getAsset(id)) { $('#tfId', m).classList.add('invalid'); return toast(`Tag ${id} already exists.`, true); }
         if (!loc) { $('#tfLoc', m).classList.add('invalid'); return toast('Enter where the tag is fixed.', true); }
-        const a = { id, typeId: $('#tfType', m).value, location: loc, site: $('#tfSite', m).value.trim(), height: $('#tfH', m).value, lifts: $('#tfL', m).value, duty: $('#tfDuty', m).value, erector: $('#tfErector', m).value.trim(), scenario, createdAt: new Date().toISOString() };
+        let swl = '';
+        if (getType($('#tfType', m).value)?.module === 'scaffold') { try { swl = readSwl($('#tfSwl', m)); } catch (err) { return toast(err.message, true); } }
+        const a = { id, typeId: $('#tfType', m).value, location: loc, site: $('#tfSite', m).value.trim(), height: $('#tfH', m).value, lifts: $('#tfL', m).value, duty: $('#tfDuty', m).value, swl, erector: $('#tfErector', m).value.trim(), scenario, createdAt: new Date().toISOString() };
         state.assets.unshift(a); saveAssets();
         toast(`QR tag ${id} created`);
         if (state.view === 'tags') RENDER.tags();
@@ -1115,10 +1177,11 @@
       <dl class="kv">
         <dt>Status</dt><dd><span class="status-chip ${di.tag}">${TAG_LABEL[di.tag]}</span> ${esc(di.text)}</dd>
         ${a.site ? `<dt>Site</dt><dd>${esc(a.site)}</dd>` : ''}
-        ${a.height ? `<dt>Size</dt><dd>${esc(a.height)} m, ${esc(a.lifts || '–')} lifts${a.duty ? ', ' + esc(a.duty) : ''}</dd>` : ''}
+        ${a.height ? `<dt>Size</dt><dd>${esc(a.height)} m, ${esc(a.lifts || '–')} lifts${normDuty(a.duty) ? ', ' + esc(dutyText(a.duty)) : ''}</dd>` : ''}
+        ${swlText(a.swl) ? `<dt>SWL</dt><dd>${esc(swlText(a.swl))}</dd>` : ''}
         ${a.erector ? `<dt>Erected by</dt><dd>${esc(a.erector)}</dd>` : ''}
         ${last ? `<dt>Last report</dt><dd>${esc(fmtDate(last.result.evaluatedAt))} by ${esc(last.meta.inspector)}</dd>` : ''}
-        <dt>Demo outcome</dt><dd><div class="seg" id="tdSeg"><button type="button" data-v="pass">Pass</button><button type="button" data-v="fail">Fail</button></div></dd>
+        <dt>Demo outcome</dt><dd><div class="seg" id="tdSeg"><button type="button" data-v="pass">Pass</button><button type="button" data-v="fail">Fail</button>${t?.module === 'scaffold' ? '<button type="button" data-v="site">Site photos</button>' : ''}</div></dd>
       </dl>
       <div class="modal-actions">
         <button type="button" class="btn btn-hivis btn-block" id="tdScan"><svg><use href="#i-scan"/></svg>Simulate scan by inspector</button>
@@ -1128,7 +1191,7 @@
       </div>`, (m) => {
       const paint = () => $$('#tdSeg button', m).forEach((b) => b.classList.toggle('on', b.dataset.v === (a.scenario || 'pass')));
       paint();
-      $$('#tdSeg button', m).forEach((b) => b.addEventListener('click', () => { a.scenario = b.dataset.v; saveAssets(); paint(); toast(`${a.id} will show a ${a.scenario.toUpperCase()} result`); }));
+      $$('#tdSeg button', m).forEach((b) => b.addEventListener('click', () => { a.scenario = b.dataset.v; saveAssets(); paint(); toast(a.scenario === 'site' ? `${a.id} will use the real site photos` : `${a.id} will show a ${a.scenario.toUpperCase()} result`); }));
       $('#tdScan', m).addEventListener('click', () => { closeModal(); S.assetId = a.id; show('scan'); });
       $('#tdPrint', m).addEventListener('click', () => printLabels([a]));
       $('#tdPng', m).addEventListener('click', () => downloadLabel(a));
@@ -1154,7 +1217,8 @@
       <dl class="kv">
         <dt>Current tag</dt><dd><span class="status-chip ${di.tag}">${TAG_LABEL[di.tag]}</span> ${esc(di.text)}</dd>
         ${a.site ? `<dt>Site</dt><dd>${esc(a.site)}</dd>` : ''}
-        ${a.height ? `<dt>Scaffold</dt><dd>${esc(a.height)} m, ${esc(a.lifts || '–')} lifts${a.duty ? ', ' + esc(a.duty) : ''}</dd>` : ''}
+        ${a.height ? `<dt>Scaffold</dt><dd>${esc(a.height)} m, ${esc(a.lifts || '–')} lifts${normDuty(a.duty) ? ', ' + esc(dutyText(a.duty)) : ''}</dd>` : ''}
+        ${swlText(a.swl) ? `<dt>SWL</dt><dd>${esc(swlText(a.swl))}</dd>` : ''}
         ${a.erector ? `<dt>Erected by</dt><dd>${esc(a.erector)}</dd>` : ''}
         <dt>Inspector</dt><dd>${esc(state.profile.name || state.user?.name || 'Inspector')}</dd>
       </dl>
@@ -1175,7 +1239,7 @@
   const scCanvas = $('#scCanvas'), scVideo = $('#scVideo');
   RENDER.scan = () => {
     if (!getAsset(S.assetId)) S.assetId = (state.assets.find((a) => a.scenario === 'fail') || state.assets[0])?.id || '';
-    $('#scChips').innerHTML = state.assets.map((a) => { const di = dueInfo(a); return `<button type="button" data-id="${esc(a.id)}" class="${a.id === S.assetId ? 'on' : ''}"><span class="dot" style="background:${a.scenario === 'fail' ? 'var(--stop)' : 'var(--go)'}"></span>${esc(a.id)} <small style="opacity:.7">${esc(a.scenario === 'fail' ? 'fail' : 'pass')}</small></button>`; }).join('') || '<p>No tags yet. Create one in QR tags.</p>';
+    $('#scChips').innerHTML = state.assets.map((a) => { const di = dueInfo(a); return `<button type="button" data-id="${esc(a.id)}" class="${a.id === S.assetId ? 'on' : ''}"><span class="dot" style="background:${a.scenario === 'fail' ? 'var(--stop)' : a.scenario === 'site' ? '#00a3e0' : 'var(--go)'}"></span>${esc(a.id)} <small style="opacity:.7">${esc((SCEN_LABEL[a.scenario] || 'Pass').toLowerCase())}</small></button>`; }).join('') || '<p>No tags yet. Create one in QR tags.</p>';
     $$('#scChips button').forEach((b) => b.addEventListener('click', () => { S.assetId = b.dataset.id; LS.set('ia_scan_pick', S.assetId); RENDER.scan(); }));
     restartScan();
   };
@@ -1300,7 +1364,7 @@
     const unc = r.checklist.filter((c) => c.status === 'unclear');
     const attention = [...bad, ...unc];
     const groups = [...rec.angles.map((x) => x.name), ...(r.checklist.some((c) => c.group === ANY) ? [ANY] : [])];
-    const details = [a.height && `${a.height} m high`, a.lifts && `${a.lifts} lifts`, a.duty, a.erector && `erected by ${a.erector}`, a.reason].filter(Boolean).join(', ');
+    const details = [a.height && `${a.height} m high`, a.lifts && `${a.lifts} lifts`, dutyText(a.duty), swlText(a.swl) && `SWL ${swlText(a.swl)}`, a.erector && `erected by ${a.erector}`, a.reason].filter(Boolean).join(', ');
     const groupHtml = groups.map((g) => {
       const rows = r.checklist.filter((c) => c.group === g);
       const shot = rec.shots[g];
@@ -1446,7 +1510,7 @@
       <div class="doc-grid">
         <div><h2>Asset</h2><table class="kvt"><tbody>
           <tr><td>${esc(rec.idLabel || 'ID')}</td><td><b>${esc(a.id)}</b></td></tr><tr><td>Location</td><td>${esc(a.location || '–')}</td></tr>
-          ${a.height ? `<tr><td>Height / lifts</td><td>${esc(a.height)} m / ${esc(a.lifts || '–')}</td></tr>` : ''}${a.duty ? `<tr><td>Duty</td><td>${esc(a.duty)}</td></tr>` : ''}
+          ${a.height ? `<tr><td>Height / lifts</td><td>${esc(a.height)} m / ${esc(a.lifts || '–')}</td></tr>` : ''}${normDuty(a.duty) ? `<tr><td>Duty</td><td>${esc(dutyText(a.duty))}</td></tr>` : ''}${swlText(a.swl) ? `<tr><td>Safe working load</td><td>${esc(swlText(a.swl))}</td></tr>` : ''}
           ${a.erector ? `<tr><td>Erected by</td><td>${esc(a.erector)}</td></tr>` : ''}<tr><td>Reason</td><td>${esc(a.reason || 'Routine check')}</td></tr>
           ${a.lastInspection ? `<tr><td>Previous inspection</td><td>${esc(fmtDay(a.lastInspection))}</td></tr>` : ''}</tbody></table></div>
         <div><h2>Inspection</h2><table class="kvt"><tbody>
@@ -1525,6 +1589,7 @@
     state.types = clone(D.TYPES); saveTypes();
     state.history = [];
     await seed(true);
+    seedSite(true);
     toast('Demo reset'); RENDER.settings();
   });
   $('#btnExportAll').addEventListener('click', () => { if (!state.history.length) return toast('Nothing to export yet.'); download(`inspections-${isoDay(Date.now())}.json`, JSON.stringify({ assets: state.assets, reports: state.history }, null, 2), 'application/json'); });
@@ -1647,6 +1712,8 @@
     // ensure built-in types exist (in case of old saved data)
     D.TYPES.forEach((b) => { if (!getType(b.id)) state.types.push(clone(b)); });
     await seed();
+    seedSite();
+    migrateAssets(); saveAssets(); saveHistory();
     // warm photo cache for a smooth demo
     M.preload(['p-base', 'p-elev', 'p-plat', 'p-ladder', 'f-base', 'f-elev', 'f-plat', 'f-ladder', 'x-site', 'x-net']);
     await sleep(500);

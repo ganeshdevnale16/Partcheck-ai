@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=5.3.0" />
+  <link rel="stylesheet" href="styles.css?v=5.5.0" />
 </head>
 <body class="locked">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -148,6 +148,7 @@
         <div class="seg" id="scenarioSeg" role="radiogroup" aria-label="Demo outcome">
           <button type="button" data-v="pass">Pass</button>
           <button type="button" data-v="fail">Fail</button>
+          <button type="button" data-v="site">Site photos</button>
         </div>
       </div>
       <form class="card" id="setupForm" novalidate>
@@ -161,7 +162,8 @@
           <div class="grid2" id="scaffoldExtras">
             <label class="field"><span>Height (m)</span><input id="sfHeight" type="number" min="0" step="0.5" inputmode="decimal" /></label>
             <label class="field"><span>Number of lifts</span><input id="sfLifts" type="number" min="0" step="1" inputmode="numeric" /></label>
-            <label class="field"><span>Duty</span><select id="sfDuty"><option value="">Not known</option><option>Light duty</option><option>General duty</option><option>Heavy duty</option></select></label>
+            <label class="field"><span>Duty</span><select id="sfDuty"><option value="">Not known</option><option value="Light">Light</option><option value="Medium">Medium</option><option value="Heavy">Heavy</option><option value="Special">Special</option></select></label>
+            <label class="field"><span>SWL (kg)</span><input id="sfSwl" type="number" min="1" max="100000" step="1" inputmode="numeric" placeholder="e.g. 600" /></label>
             <label class="field"><span>Erected by</span><input id="sfErector" maxlength="80" placeholder="Contractor" /></label>
           </div>
           <div class="grid2">
@@ -389,9 +391,9 @@
   <div id="printArea"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/qr.js?v=5.3.0"></script>
-  <script src="js/demo-data.js?v=5.3.0"></script>
-  <script src="js/media.js?v=5.3.0"></script>
-  <script src="js/app.js?v=5.3.0"></script>
+  <script src="js/qr.js?v=5.5.0"></script>
+  <script src="js/demo-data.js?v=5.5.0"></script>
+  <script src="js/media.js?v=5.5.0"></script>
+  <script src="js/app.js?v=5.5.0"></script>
 </body>
 </html>
