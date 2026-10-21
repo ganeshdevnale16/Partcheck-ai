@@ -48,6 +48,17 @@
     return DUTIES.find((x) => x.toLowerCase() === t.toLowerCase()) || '';
   };
   const dutyText = (d) => (normDuty(d) ? `${normDuty(d)} duty` : '');
+  const fmtM = (v) => (Number(v) > 0 ? `${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 1 })} m` : '');
+  // "12 m high × 18 m long, 6 lifts"
+  const sizeText = (a) => [[a.height && `${fmtM(a.height)} high`, a.length && `${fmtM(a.length)} long`].filter(Boolean).join(' × '), a.lifts && `${a.lifts} lifts`].filter(Boolean).join(', ');
+  function readMeters(input, label) {
+    const raw = String(input.value || '').trim();
+    input.classList.remove('invalid');
+    if (!raw) return '';
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0 || n > 1000) { input.classList.add('invalid'); input.focus(); throw new Error(`${label} must be a number in metres, between 0.1 and 1,000.`); }
+    return String(Math.round(n * 10) / 10);
+  }
   const swlText = (v) => (Number(v) > 0 ? `${Number(v).toLocaleString('en-IN')} kg` : '');
   function readSwl(input) {
     const raw = String(input.value || '').trim();
@@ -216,9 +227,10 @@
     const seedSwl = Object.fromEntries(D.ASSETS.map((a) => [a.id, a]));
     state.assets.forEach((a) => {
       a.duty = normDuty(a.duty);
+      if (!a.length && seedSwl[a.id]?.length && a.typeId === seedSwl[a.id].typeId) a.length = seedSwl[a.id].length;
       if (!a.swl && seedSwl[a.id]?.swl && a.typeId === seedSwl[a.id].typeId) { a.swl = seedSwl[a.id].swl; if (!a.duty) a.duty = seedSwl[a.id].duty; }
     });
-    state.history.forEach((h) => { if (h.asset) { h.asset.duty = normDuty(h.asset.duty); if (!h.asset.swl && seedSwl[h.asset.id]) h.asset.swl = seedSwl[h.asset.id].swl || ''; } });
+    state.history.forEach((h) => { if (h.asset) { h.asset.duty = normDuty(h.asset.duty); if (!h.asset.swl && seedSwl[h.asset.id]) h.asset.swl = seedSwl[h.asset.id].swl || ''; if (!h.asset.length && seedSwl[h.asset.id]) h.asset.length = seedSwl[h.asset.id].length || ''; } });
     window.DEMO_SWL = Object.fromEntries(state.assets.filter((a) => a.swl).map((a) => [a.id, a.swl]));
   }
 
@@ -292,13 +304,13 @@
     const asset = o.asset || {};
     const scaffold = t.module === 'scaffold';
     const location = o.location ?? asset.location ?? '';
-    const desc = [t.description, normDuty(o.duty ?? asset.duty) && dutyText(o.duty ?? asset.duty), swlText(o.swl ?? asset.swl) && `SWL ${swlText(o.swl ?? asset.swl)}`, asset.height && `Height about ${asset.height} m`, asset.lifts && `${asset.lifts} lifts`].filter(Boolean).join('. ');
+    const desc = [t.description, normDuty(o.duty ?? asset.duty) && dutyText(o.duty ?? asset.duty), swlText(o.swl ?? asset.swl) && `SWL ${swlText(o.swl ?? asset.swl)}`, sizeText({ height: o.height ?? asset.height, length: o.length ?? asset.length }), asset.lifts && `${asset.lifts} lifts`].filter(Boolean).join('. ');
     return {
       id: uid(), mode: o.mode || 'photo', typeId: t.id, typeName: t.name, module: t.module || '', safety: Boolean(t.safety),
       idLabel: t.idLabel || 'Asset ID', scenario: o.scenario || 'pass', assetId: asset.id && getAsset(asset.id) ? asset.id : null,
       asset: {
         id: o.id ?? asset.id ?? '', location, site: asset.site || state.profile.site || '',
-        height: scaffold ? (o.height ?? asset.height ?? '') : '', lifts: scaffold ? (o.lifts ?? asset.lifts ?? '') : '',
+        height: scaffold ? (o.height ?? asset.height ?? '') : '', length: scaffold ? (o.length ?? asset.length ?? '') : '', lifts: scaffold ? (o.lifts ?? asset.lifts ?? '') : '',
         duty: scaffold ? normDuty(o.duty ?? asset.duty ?? '') : '', swl: scaffold ? (o.swl ?? asset.swl ?? '') : '', erector: scaffold ? (o.erector ?? asset.erector ?? '') : '',
         lastInspection: o.lastInspection || '', reason: o.reason || 'Routine check',
       },
@@ -567,11 +579,11 @@
   // ---------- STEP 2: details ----------
   function fillFormFromAsset(a) {
     $('#sfId').value = a.id || ''; $('#sfLocation').value = a.location || '';
-    $('#sfHeight').value = a.height || ''; $('#sfLifts').value = a.lifts || ''; $('#sfDuty').value = normDuty(a.duty); $('#sfSwl').value = a.swl || ''; $('#sfErector').value = a.erector || '';
+    $('#sfHeight').value = a.height || ''; $('#sfLength').value = a.length || ''; $('#sfLifts').value = a.lifts || ''; $('#sfDuty').value = normDuty(a.duty); $('#sfSwl').value = a.swl || ''; $('#sfErector').value = a.erector || '';
     const last = lastReportFor(a.id); $('#sfLast').value = last ? isoDay(last.result.evaluatedAt) : '';
   }
   function resetSetupForm() {
-    ['#sfId', '#sfLocation', '#sfHeight', '#sfLifts', '#sfSwl', '#sfErector', '#sfLast', '#sfNotes'].forEach((s) => { $(s).value = ''; });
+    ['#sfId', '#sfLocation', '#sfHeight', '#sfLength', '#sfLifts', '#sfSwl', '#sfErector', '#sfLast', '#sfNotes'].forEach((s) => { $(s).value = ''; });
     $('#sfDuty').value = ''; $('#sfId').classList.remove('invalid');
   }
   function paintScenario() { $$('#scenarioSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === state.scenario)); }
@@ -610,7 +622,7 @@
     const rec = blankRecord(t, {
       asset: asset.id ? asset : { site: state.profile.site }, mode, scenario: state.scenario,
       id, location: $('#sfLocation').value.trim() || asset.location || state.profile.site || '',
-      height: $('#sfHeight').value, lifts: $('#sfLifts').value, duty: $('#sfDuty').value, swl: t.module === 'scaffold' ? readSwl($('#sfSwl')) : '', erector: $('#sfErector').value.trim(),
+      height: t.module === 'scaffold' ? readMeters($('#sfHeight'), 'Height') : '', length: t.module === 'scaffold' ? readMeters($('#sfLength'), 'Length') : '', lifts: $('#sfLifts').value, duty: $('#sfDuty').value, swl: t.module === 'scaffold' ? readSwl($('#sfSwl')) : '', erector: $('#sfErector').value.trim(),
       lastInspection: $('#sfLast').value, reason: $('#sfReason').value, inspector: $('#sfInspector').value.trim(), notes: $('#sfNotes').value.trim(),
     });
     if ($('#sfGps').checked) getGps(rec);
@@ -1137,6 +1149,7 @@
         <label class="field"><span>Site</span><input id="tfSite" maxlength="120" value="${esc(state.profile.site || '')}" /></label>
         <div class="grid2" id="tfScaffold">
           <label class="field"><span>Height (m)</span><input id="tfH" type="number" min="0" step="0.5" inputmode="decimal" /></label>
+          <label class="field"><span>Length (m)</span><input id="tfLen" type="number" min="0.1" max="1000" step="0.1" inputmode="decimal" placeholder="e.g. 18" /></label>
           <label class="field"><span>Lifts</span><input id="tfL" type="number" min="0" inputmode="numeric" /></label>
           <label class="field"><span>Duty</span><select id="tfDuty"><option value="">Not known</option>${DUTIES.map((d) => `<option value="${d}">${d}</option>`).join('')}</select></label>
           <label class="field"><span>SWL (kg)</span><input id="tfSwl" type="number" min="1" max="100000" step="1" inputmode="numeric" placeholder="e.g. 600" /></label>
@@ -1155,9 +1168,11 @@
         if (!id) { $('#tfId', m).classList.add('invalid'); return toast('Enter a tag ID.', true); }
         if (getAsset(id)) { $('#tfId', m).classList.add('invalid'); return toast(`Tag ${id} already exists.`, true); }
         if (!loc) { $('#tfLoc', m).classList.add('invalid'); return toast('Enter where the tag is fixed.', true); }
-        let swl = '';
-        if (getType($('#tfType', m).value)?.module === 'scaffold') { try { swl = readSwl($('#tfSwl', m)); } catch (err) { return toast(err.message, true); } }
-        const a = { id, typeId: $('#tfType', m).value, location: loc, site: $('#tfSite', m).value.trim(), height: $('#tfH', m).value, lifts: $('#tfL', m).value, duty: $('#tfDuty', m).value, swl, erector: $('#tfErector', m).value.trim(), scenario, createdAt: new Date().toISOString() };
+        let swl = '', height = '', length = '';
+        if (getType($('#tfType', m).value)?.module === 'scaffold') {
+          try { height = readMeters($('#tfH', m), 'Height'); length = readMeters($('#tfLen', m), 'Length'); swl = readSwl($('#tfSwl', m)); } catch (err) { return toast(err.message, true); }
+        }
+        const a = { id, typeId: $('#tfType', m).value, location: loc, site: $('#tfSite', m).value.trim(), height, length, lifts: $('#tfL', m).value, duty: $('#tfDuty', m).value, swl, erector: $('#tfErector', m).value.trim(), scenario, createdAt: new Date().toISOString() };
         state.assets.unshift(a); saveAssets();
         toast(`QR tag ${id} created`);
         if (state.view === 'tags') RENDER.tags();
@@ -1177,7 +1192,7 @@
       <dl class="kv">
         <dt>Status</dt><dd><span class="status-chip ${di.tag}">${TAG_LABEL[di.tag]}</span> ${esc(di.text)}</dd>
         ${a.site ? `<dt>Site</dt><dd>${esc(a.site)}</dd>` : ''}
-        ${a.height ? `<dt>Size</dt><dd>${esc(a.height)} m, ${esc(a.lifts || '–')} lifts${normDuty(a.duty) ? ', ' + esc(dutyText(a.duty)) : ''}</dd>` : ''}
+        ${sizeText(a) ? `<dt>Size</dt><dd>${esc(sizeText(a))}${normDuty(a.duty) ? ', ' + esc(dutyText(a.duty)) : ''}</dd>` : ''}
         ${swlText(a.swl) ? `<dt>SWL</dt><dd>${esc(swlText(a.swl))}</dd>` : ''}
         ${a.erector ? `<dt>Erected by</dt><dd>${esc(a.erector)}</dd>` : ''}
         ${last ? `<dt>Last report</dt><dd>${esc(fmtDate(last.result.evaluatedAt))} by ${esc(last.meta.inspector)}</dd>` : ''}
@@ -1217,7 +1232,7 @@
       <dl class="kv">
         <dt>Current tag</dt><dd><span class="status-chip ${di.tag}">${TAG_LABEL[di.tag]}</span> ${esc(di.text)}</dd>
         ${a.site ? `<dt>Site</dt><dd>${esc(a.site)}</dd>` : ''}
-        ${a.height ? `<dt>Scaffold</dt><dd>${esc(a.height)} m, ${esc(a.lifts || '–')} lifts${normDuty(a.duty) ? ', ' + esc(dutyText(a.duty)) : ''}</dd>` : ''}
+        ${sizeText(a) ? `<dt>Scaffold</dt><dd>${esc(sizeText(a))}${normDuty(a.duty) ? ', ' + esc(dutyText(a.duty)) : ''}</dd>` : ''}
         ${swlText(a.swl) ? `<dt>SWL</dt><dd>${esc(swlText(a.swl))}</dd>` : ''}
         ${a.erector ? `<dt>Erected by</dt><dd>${esc(a.erector)}</dd>` : ''}
         <dt>Inspector</dt><dd>${esc(state.profile.name || state.user?.name || 'Inspector')}</dd>
@@ -1364,7 +1379,7 @@
     const unc = r.checklist.filter((c) => c.status === 'unclear');
     const attention = [...bad, ...unc];
     const groups = [...rec.angles.map((x) => x.name), ...(r.checklist.some((c) => c.group === ANY) ? [ANY] : [])];
-    const details = [a.height && `${a.height} m high`, a.lifts && `${a.lifts} lifts`, dutyText(a.duty), swlText(a.swl) && `SWL ${swlText(a.swl)}`, a.erector && `erected by ${a.erector}`, a.reason].filter(Boolean).join(', ');
+    const details = [sizeText(a), dutyText(a.duty), swlText(a.swl) && `SWL ${swlText(a.swl)}`, a.erector && `erected by ${a.erector}`, a.reason].filter(Boolean).join(', ');
     const groupHtml = groups.map((g) => {
       const rows = r.checklist.filter((c) => c.group === g);
       const shot = rec.shots[g];
@@ -1510,7 +1525,7 @@
       <div class="doc-grid">
         <div><h2>Asset</h2><table class="kvt"><tbody>
           <tr><td>${esc(rec.idLabel || 'ID')}</td><td><b>${esc(a.id)}</b></td></tr><tr><td>Location</td><td>${esc(a.location || '–')}</td></tr>
-          ${a.height ? `<tr><td>Height / lifts</td><td>${esc(a.height)} m / ${esc(a.lifts || '–')}</td></tr>` : ''}${normDuty(a.duty) ? `<tr><td>Duty</td><td>${esc(dutyText(a.duty))}</td></tr>` : ''}${swlText(a.swl) ? `<tr><td>Safe working load</td><td>${esc(swlText(a.swl))}</td></tr>` : ''}
+          ${a.height ? `<tr><td>Height</td><td>${esc(fmtM(a.height))}</td></tr>` : ''}${a.length ? `<tr><td>Length</td><td>${esc(fmtM(a.length))}</td></tr>` : ''}${a.lifts ? `<tr><td>Lifts</td><td>${esc(a.lifts)}</td></tr>` : ''}${normDuty(a.duty) ? `<tr><td>Duty</td><td>${esc(dutyText(a.duty))}</td></tr>` : ''}${swlText(a.swl) ? `<tr><td>Safe working load</td><td>${esc(swlText(a.swl))}</td></tr>` : ''}
           ${a.erector ? `<tr><td>Erected by</td><td>${esc(a.erector)}</td></tr>` : ''}<tr><td>Reason</td><td>${esc(a.reason || 'Routine check')}</td></tr>
           ${a.lastInspection ? `<tr><td>Previous inspection</td><td>${esc(fmtDay(a.lastInspection))}</td></tr>` : ''}</tbody></table></div>
         <div><h2>Inspection</h2><table class="kvt"><tbody>
@@ -1705,6 +1720,9 @@
     img.dataset.fixed = '1';
     M.getImage(img.dataset.key).then((r) => { if (r.src !== img.src) img.src = r.src; }).catch(() => {});
   }, true);
+
+  // clear a red field as soon as the user edits it
+  document.addEventListener('input', (e) => { if (e.target.classList?.contains('invalid')) e.target.classList.remove('invalid'); });
 
   // ======================= BOOT =======================
   (async () => {

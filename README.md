@@ -1,4 +1,4 @@
-# Inspection AI – Client Demo (v5.5, real site photo scenario)
+# Inspection AI – Client Demo (v5.6, real site photos, tag length)
 
 Demo build of Inspection AI for client presentations. Every screen and flow works like the real product,
 but **no AI backend or API keys are needed**: the camera shows real scaffold site photos and the AI findings

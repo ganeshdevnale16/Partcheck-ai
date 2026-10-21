@@ -212,10 +212,10 @@
 
   // ---------- seeded QR tags (assets) ----------
   const ASSETS = [
-    { id: 'SC-014', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower A – east elevation', height: '12', lifts: '6', duty: 'Medium', swl: '600', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 20 },
-    { id: 'SC-027', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower B – north face', height: '18', lifts: '9', duty: 'Heavy', swl: '900', erector: 'Apex Access Pvt Ltd', scenario: 'fail', createdDaysAgo: 34 },
-    { id: 'SC-031', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Podium – ramp area', height: '6', lifts: '3', duty: 'Light', swl: '300', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 6 },
-    { id: 'SC-040', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Service yard – drain side wall', height: '8', lifts: '4', duty: 'Medium', swl: '450', erector: 'Site contractor', scenario: 'site', createdDaysAgo: 3 },
+    { id: 'SC-014', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower A – east elevation', height: '12', length: '18', lifts: '6', duty: 'Medium', swl: '600', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 20 },
+    { id: 'SC-027', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower B – north face', height: '18', length: '24', lifts: '9', duty: 'Heavy', swl: '900', erector: 'Apex Access Pvt Ltd', scenario: 'fail', createdDaysAgo: 34 },
+    { id: 'SC-031', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Podium – ramp area', height: '6', length: '6', lifts: '3', duty: 'Light', swl: '300', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 6 },
+    { id: 'SC-040', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Service yard – drain side wall', height: '8', length: '10', lifts: '4', duty: 'Medium', swl: '450', erector: 'Site contractor', scenario: 'site', createdDaysAgo: 3 },
     { id: 'FE-108', typeId: 'type-extinguisher', site: 'Orchid Heights, Pune', location: 'Site office – entrance', scenario: 'pass', createdDaysAgo: 60 },
   ];
 
