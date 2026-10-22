@@ -39,6 +39,16 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
     del(k) { try { localStorage.removeItem(k); } catch { /* ignore */ } },
   };
+  // ---------- activity log: sends who did what to the server (logs/activity.log) ----------
+  const SESSION_ID = Math.random().toString(36).slice(2, 10);
+  function track(action, detail = {}) {
+    try {
+      const u = LS.get('ia_user', null);
+      const body = JSON.stringify({ email: u?.email || '', action, detail, view: document.body.dataset.view || '', session: SESSION_ID });
+      if (navigator.sendBeacon && navigator.sendBeacon('/api/log', new Blob([body], { type: 'text/plain' }))) return;
+      fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+    } catch { /* logging must never break the app */ }
+  }
   const ANY = 'Any view';
   // evidence outline: [x, y, w, h] rectangle or { poly: [[x, y], ...] }, all as fractions of the photo
   const bboxOf = (b) => {
@@ -343,7 +353,7 @@
     if (prev !== view) leaveHooks.forEach((fn) => fn(prev, view));
     state.view = view;
     $$('.view').forEach((v) => { v.hidden = v.id !== `view-${view}`; });
-    if (prev !== view) document.body.dataset.view = view;
+    if (prev !== view) { document.body.dataset.view = view; if (!document.body.classList.contains('locked')) track('page_view', { page: view }); }
     document.body.classList.toggle('cam', CAM_VIEWS.includes(view));
     const nav = view === 'editor' && state.editor?.returnTo !== 'settings' ? 'setup' : NAV_OF[view];
     $$('.tabbar [data-go], .side-nav [data-go]').forEach((b) => b.classList.toggle('on', b.dataset.go === nav));
@@ -417,7 +427,7 @@
     document.body.classList.add('locked');
     $('#splash').hidden = true;
     $('#loginScreen').hidden = false;
-    $('#loginUser').value = state.user?.name || state.profile.name || '';
+    $('#loginUser').value = state.user?.email || '';
     if (msg) $('.login-hint').textContent = msg;
     M.getImage('p-elev').then((r) => { $('#loginArt').src = r.src; }).catch(() => {});
     setTimeout(() => ($('#loginUser').value ? $('#loginPass') : $('#loginUser')).focus(), 60);
@@ -428,14 +438,16 @@
   });
   $('#loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const name = $('#loginUser').value.trim();
+    const email = $('#loginUser').value.trim().toLowerCase();
+    const name = email.split('@')[0];
     const err = (m) => { $('#loginErr').textContent = m; const c = $('.login-card'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); };
-    if (!name) { err('Enter your name.'); $('#loginUser').focus(); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err('Enter a valid email ID.'); $('#loginUser').focus(); return; }
     if (!$('#loginPass').value) { err('Enter any password.'); $('#loginPass').focus(); return; }
     $('#loginBtn').disabled = true; $('#loginBtn').textContent = 'Signing in…';
     await sleep(650);
-    state.user = { name, at: new Date().toISOString() };
+    state.user = { name, email, at: new Date().toISOString() };
     LS.set('ia_user', state.user);
+    track('login');
     state.profile.name = name; LS.set('ia_profile', state.profile);
     $('#loginBtn').disabled = false; $('#loginBtn').textContent = 'Sign in';
     unlock();
@@ -443,6 +455,7 @@
   });
   function signOut() {
     if (!confirm('Sign out of this demo?')) return;
+    track('logout');
     LS.del('ia_user'); state.user = null; state.cur = null;
     show('home', { push: false });
     showLogin('You are signed out.');
@@ -709,6 +722,7 @@
   const capCanvas = $('#capCanvas'), capVideo = $('#capVideo');
 
   function startPhoto() {
+    track('inspection_start', { mode: 'photo', tag: state.cur?.asset?.id, type: state.cur?.typeName });
     P.idx = 0;
     show('capture');
     renderCapture();
@@ -850,6 +864,7 @@
     const rows = scriptedChecklist(cur);
     rows.forEach((r) => { if (r.group !== ANY && !cur.shots[r.group]) Object.assign(r, { status: 'missing', confidence: 1, note: 'This view was not photographed', box: null }); });
     cur.result = buildResult(cur, rows);
+    track('inspection_complete', { mode: 'photo', tag: cur.asset?.id, result: TAG_LABEL[resultTag(cur)] });
     cur.saved = false;
     renderResult();
     show('result');
@@ -862,6 +877,7 @@
 
   async function startLive() {
     const rec = state.cur;
+    track('inspection_start', { mode: 'live', tag: rec.asset?.id, type: rec.typeName });
     rec.mode = 'live';
     L.rows = scriptedChecklist(rec);
     L.steps = rec.angles.map((a) => ({ view: a.name, rows: L.rows.filter((r) => viewOf(r) === a.name) })).filter((s) => s.rows.length);
@@ -1062,6 +1078,7 @@
     });
     await analyse(Object.values(rec.shots)[0]?.src, ['Second check of every OK', 'Building the result'], 1800);
     rec.result = buildResult(rec, rows, { liveStats: { frames: Math.max(12, Math.round(L.t / 1600)), seconds: Math.round((Date.now() - L.startedAt) / 1000) } });
+    track('inspection_complete', { mode: 'live', tag: rec.asset?.id, result: TAG_LABEL[resultTag(rec)] });
     rec.saved = false;
     renderResult();
     show('result');
@@ -1122,6 +1139,7 @@
     return c;
   }
   async function downloadLabel(a) {
+    track('tag_label_download', { tag: a.id });
     const c = await labelCanvas(a);
     c.toBlob((b) => download(`qr-tag-${a.id}.png`, b), 'image/png');
   }
@@ -1130,6 +1148,7 @@
       <b>${esc(a.id)}</b><span>${esc(getType(a.typeId)?.name || 'Asset')} · ${esc(a.location)}</span><span>${esc(a.site || '')}</span><div class="scan">Open Inspection AI and scan</div></div>`;
   }
   function printLabels(list) {
+    track('tag_label_print', { tags: list.map((x) => x.id).join(',') });
     $('#printArea').innerHTML = `<div class="label-sheet">${list.map(labelHtml).join('')}</div>`;
     setTimeout(() => window.print(), 250);
   }
@@ -1190,6 +1209,7 @@
         }
         const a = { id, typeId: $('#tfType', m).value, location: loc, site: $('#tfSite', m).value.trim(), height, length, lifts: $('#tfL', m).value, duty: $('#tfDuty', m).value, swl, erector: $('#tfErector', m).value.trim(), scenario, createdAt: new Date().toISOString() };
         state.assets.unshift(a); saveAssets();
+        track('tag_created', { tag: id, location: loc });
         toast(`QR tag ${id} created`);
         if (state.view === 'tags') RENDER.tags();
         openTagDetail(id);
@@ -1229,7 +1249,7 @@
       $('#tdCopy', m).addEventListener('click', async () => { try { await navigator.clipboard.writeText(tagLink(a.id)); toast('Link copied'); } catch { prompt('Copy this link:', tagLink(a.id)); } });
       $('#tdLast', m)?.addEventListener('click', () => { closeModal(); openHistory(last.id); });
       $('#tdStart', m)?.addEventListener('click', () => { closeModal(); selectType(a.typeId, a); });
-      $('#tdDel', m).addEventListener('click', () => { if (!confirm(`Delete tag ${a.id}? Its reports are kept.`)) return; state.assets = state.assets.filter((x) => x !== a); saveAssets(); closeModal(); toast('Tag deleted'); if (RENDER[state.view]) RENDER[state.view](); });
+      $('#tdDel', m).addEventListener('click', () => { if (!confirm(`Delete tag ${a.id}? Its reports are kept.`)) return; state.assets = state.assets.filter((x) => x !== a); saveAssets(); track('tag_deleted', { tag: a.id }); closeModal(); toast('Tag deleted'); if (RENDER[state.view]) RENDER[state.view](); });
     });
   }
 
@@ -1239,6 +1259,7 @@
     const m = text.match(/#tag\/([^?#&]+)/i);
     const id = decodeURIComponent(m ? m[1] : text);
     const a = getAsset(id);
+    track('tag_scanned', { tag: id, found: !!a });
     if (!a) { toast(`Unknown tag "${id.slice(0, 40)}". Create it in QR tags first.`, true); return; }
     const t = getType(a.typeId);
     const di = dueInfo(a);
@@ -1454,7 +1475,7 @@
         </div>
       </div>`;
 
-    $$('.decision button').forEach((b) => b.addEventListener('click', () => { rec.override.status = b.dataset.o; rec.saved = false; renderResult(); toast(b.dataset.o ? `Result set to ${TAG_LABEL[resultTag(rec)]}` : 'Using the AI result'); }));
+    $$('.decision button').forEach((b) => b.addEventListener('click', () => { rec.override.status = b.dataset.o; track('decision_changed', { tag: rec.asset?.id, decision: b.dataset.o || 'AI result' }); rec.saved = false; renderResult(); toast(b.dataset.o ? `Result set to ${TAG_LABEL[resultTag(rec)]}` : 'Using the AI result'); }));
     $('#ovRemarks').addEventListener('input', (e) => { rec.override.remarks = e.target.value; rec.saved = false; });
     $('#signoff').addEventListener('change', (e) => {
       rec.signoff = e.target.checked ? { done: true, by: state.profile.name || rec.meta.inspector || 'Inspector', at: new Date().toISOString() } : { done: false, by: '', at: '' };
@@ -1479,6 +1500,7 @@
   }
 
   function saveToHistory(rec) {
+    track('report_saved', { tag: rec.asset?.id, result: TAG_LABEL[resultTag(rec)], signedOff: !!rec.signoff?.done });
     rec.saved = true;
     rec.reportNo = rec.reportNo || reportNo(rec);
     const copy = { ...clone(rec), fromHistory: false };
@@ -1491,6 +1513,7 @@
   function openHistory(id) {
     const rec = state.history.find((h) => h.id === id);
     if (!rec) return;
+    track('report_opened', { tag: rec.asset?.id, reportNo: rec.reportNo });
     state.cur = { ...clone(rec), fromHistory: true, saved: true };
     renderResult();
     show('result');
@@ -1504,6 +1527,7 @@
       `Inspected by ${rec.meta.inspector} on ${fmtDate(r.evaluatedAt)}`, 'Checked with Inspection AI.'].filter(Boolean).join('\n');
   }
   async function shareSummary(rec) {
+    track('report_shared', { tag: rec.asset?.id });
     const text = summaryText(rec);
     try {
       if (navigator.share) { await navigator.share({ title: `${rec.typeName} ${rec.asset.id} inspection`, text }); return; }
@@ -1519,6 +1543,7 @@
     setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
   function exportCsv(list) {
+    track('csv_export', { reports: list.length, tag: list.length === 1 ? list[0].asset?.id : undefined });
     const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const head = ['Report no.', 'Inspection type', 'ID', 'Location', 'Inspector', 'Date', 'Result', 'Checks OK', 'View', 'Check', 'Critical', 'Status', 'Evidence', 'Remarks'];
     const rows = list.flatMap((rec) => rec.result.checklist.map((c) => [rec.reportNo || '', rec.typeName, rec.asset.id, rec.asset.location, rec.meta.inspector, fmtDate(rec.result.evaluatedAt), TAG_LABEL[resultTag(rec)], `${rec.result.counts.present} of ${rec.result.counts.total}`, c.group, splitCheck(c.part).name, c.critical ? 'yes' : '', STATUS_TEXT[c.status], c.note, rec.override?.remarks]));
@@ -1581,7 +1606,7 @@
     document.body.appendChild(shell);
     document.body.style.overflow = 'hidden';
     $('#docClose', shell).addEventListener('click', closeDoc);
-    $('#docPrint', shell).addEventListener('click', () => { $('#printArea').innerHTML = reportHtml(rec); setTimeout(() => window.print(), 300); });
+    $('#docPrint', shell).addEventListener('click', () => { track('report_print_pdf', { tag: rec.asset?.id, reportNo: rec.reportNo }); $('#printArea').innerHTML = reportHtml(rec); setTimeout(() => window.print(), 300); });
   }
   function closeDoc() { $('#docShell')?.remove(); document.body.style.overflow = ''; }
 
@@ -1625,7 +1650,7 @@
     state.history = [];
     await seed(true);
     seedSite(true);
-    toast('Demo reset'); RENDER.settings();
+    track('demo_reset'); toast('Demo reset'); RENDER.settings();
   });
   $('#btnExportAll').addEventListener('click', () => { if (!state.history.length) return toast('Nothing to export yet.'); download(`inspections-${isoDay(Date.now())}.json`, JSON.stringify({ assets: state.assets, reports: state.history }, null, 2), 'application/json'); });
   $('#btnClearHistory').addEventListener('click', () => { if (!confirm('Delete ALL reports from this device?')) return; state.history = []; saveHistory(); RENDER.settings(); toast('All reports deleted'); });
@@ -1760,6 +1785,6 @@
     // warm photo cache for a smooth demo
     M.preload(['p-base', 'p-elev', 'p-plat', 'p-ladder', 'f-base', 'f-elev', 'f-plat', 'f-ladder', 'x-site', 'x-net']);
     await sleep(500);
-    if (state.user) unlock(); else showLogin();
+    if (state.user?.email) { track('session_resume'); unlock(); } else showLogin();
   })();
 })();

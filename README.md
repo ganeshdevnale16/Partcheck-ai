@@ -75,3 +75,15 @@ All colours are in the `:root` block at the top of `public/styles.css`. Font: Op
 
 **Client logo (optional):** put a file at `public/brand/client-logo.png`. It appears in the sidebar and on every
 PDF report header. If the file is missing nothing shows. Only use a client's logo with their permission.
+
+## Activity log (v5.8)
+Sign-in now uses an **email ID** (any email, any password). Every action is appended as one JSON line to `logs/activity.log`:
+time, email, action, page, details (tag ID, result…), session, IP, browser.
+
+Logged actions: login, logout, session_resume, page_view, inspection_start, inspection_complete, decision_changed,
+report_saved, report_opened, report_print_pdf, report_shared, csv_export, tag_created, tag_deleted, tag_scanned,
+tag_label_print, tag_label_download, demo_reset. Passwords are never logged.
+
+Download the log: set an environment variable `ADMIN_KEY` (any secret), then open
+`https://YOUR-APP/api/logs?key=YOUR_SECRET` (add `&format=csv` for Excel).
+Render free plan wipes files on redeploy/restart: download regularly or attach a Render Disk and set `LOG_DIR` to its mount path.
