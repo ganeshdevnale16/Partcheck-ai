@@ -87,3 +87,10 @@ tag_label_print, tag_label_download, demo_reset. Passwords are never logged.
 Download the log: set an environment variable `ADMIN_KEY` (any secret), then open
 `https://YOUR-APP/api/logs?key=YOUR_SECRET` (add `&format=csv` for Excel).
 Render free plan wipes files on redeploy/restart: download regularly or attach a Render Disk and set `LOG_DIR` to its mount path.
+
+### Vercel
+Vercel cannot write files, so on Vercel the log goes to a Redis database (`api/log.js`, `api/logs.js`).
+1. Vercel project > Storage > add **Upstash Redis** (free) and connect it to the project (env vars are added automatically).
+2. Set `ADMIN_KEY`, then redeploy.
+3. Download: `https://YOUR-APP.vercel.app/api/logs?key=YOUR_SECRET` (add `&format=csv` for Excel).
+Every event is also printed in Vercel > Logs as `ACTIVITY {...}`.
