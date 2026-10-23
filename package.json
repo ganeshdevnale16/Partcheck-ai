@@ -1,13 +1,17 @@
 {
-  "name": "inspection-ai-demo",
-  "version": "5.0.0",
+  "name": "inspection-ai",
+  "version": "6.0.0",
   "private": true,
-  "description": "Inspection AI – client demo build (QR tags, simulated live scan, pass/fail scaffold reports)",
+  "description": "Inspection AI \u2013 QR tags, real AI photo and live inspection (Azure OpenAI, OpenAI, Gemini, Claude), role dashboards, projects and alerts",
   "type": "module",
   "scripts": {
     "start": "node render-server.js",
     "images": "node scripts/download-demo-images.mjs"
   },
-  "engines": { "node": ">=18" },
-  "dependencies": { "express": "^4.21.2" }
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
 }

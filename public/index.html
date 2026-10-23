@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=5.7.0" />
+  <link rel="stylesheet" href="styles.css?v=6.0.0" />
 </head>
 <body class="locked">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -42,6 +42,8 @@
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
     <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/></g></symbol>
+    <symbol id="i-team" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6M16 4.5a3.2 3.2 0 0 1 0 6.3M17.5 14.2c2 .7 3.5 2.9 3.5 5.8"/></g></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z" fill="currentColor"/></symbol>
   </svg>
@@ -67,7 +69,7 @@
           <p class="login-err" id="loginErr" role="alert"></p>
           <button type="submit" class="btn btn-hivis btn-block" id="loginBtn">Sign in</button>
         </form>
-        <p class="login-foot">Your email and activity in this tool are recorded for usage monitoring. Demo build: photos and live camera use sample site footage, and AI results are pre-recorded.</p>
+        <p class="login-foot">Your email and activity in this tool are recorded for usage monitoring. Demo data is used for dashboards. Inspections use pre-recorded results until an Admin switches on Live AI.</p>
       </div>
     </div>
   </div>
@@ -79,8 +81,10 @@
     <nav class="side-nav">
       <button type="button" data-go="home"><svg><use href="#i-home"/></svg>Dashboard</button>
       <button type="button" data-go="setup"><svg><use href="#i-clip"/></svg>New inspection</button>
+      <button type="button" data-go="projects"><svg><use href="#i-team"/></svg>Projects &amp; team</button>
       <button type="button" data-go="tags"><svg><use href="#i-tag"/></svg>QR tags</button>
       <button type="button" data-go="reports"><svg><use href="#i-history"/></svg>Reports</button>
+      <button type="button" data-alerts><svg><use href="#i-bell"/></svg>Alerts <span class="bell-badge side" hidden>0</span></button>
       <button type="button" data-go="settings"><svg><use href="#i-settings"/></svg>Settings</button>
     </nav>
     <button type="button" class="side-scan" data-go="scan"><svg><use href="#i-scan"/></svg>Scan QR tag</button>
@@ -92,7 +96,7 @@
     <button type="button" class="appbar-back" id="btnBack" aria-label="Back" hidden><svg><use href="#i-back"/></svg></button>
     <a class="brand" href="#home" data-go="home"><svg><use href="#logo"/></svg><span>Inspection AI</span></a>
     <span class="spacer"></span>
-    <span class="chip-demo">Demo</span>
+    <button type="button" class="bell-btn" data-alerts aria-label="Alerts"><svg><use href="#i-bell"/></svg><span class="bell-badge" hidden>0</span></button>
     <button type="button" class="avatar-btn" data-go="settings" aria-label="Settings"><span class="avatar" id="topAvatar">?</span></button>
   </header>
 
@@ -111,17 +115,23 @@
           </div>
         </div>
       </div>
-      <div class="kpis" id="kpis"></div>
+      <div class="role-bar">
+        <span class="role-badge" id="roleBadge">AD</span>
+        <div class="role-text"><label for="roleSelect">Dashboard for</label><select id="roleSelect"></select><small id="roleSub"></small></div>
+        <span class="demo-data">Demo data</span>
+      </div>
+      <div id="roleDash" class="role-dash"></div>
+      <div class="kpis" id="kpis" hidden></div>
       <div class="home-cols">
         <div>
           <div class="sec-row"><h2 class="sec-title">Recent reports</h2><button type="button" class="link-btn" data-go="reports">All reports</button></div>
           <div class="list" id="homeRecent"></div>
         </div>
         <div>
-          <div class="sec-row"><h2 class="sec-title">This week</h2></div>
+          <div hidden><div class="sec-row"><h2 class="sec-title">This week</h2></div>
           <div class="card"><div class="week-chart" id="weekChart"></div>
             <div class="legend"><span><i style="background:var(--go)"></i>Green</span><span><i style="background:var(--caution)"></i>Yellow</span><span><i style="background:var(--stop)"></i>Red</span></div>
-          </div>
+          </div></div>
           <div class="sec-row"><h2 class="sec-title">Tag status</h2><button type="button" class="link-btn" data-go="tags">All tags</button></div>
           <div class="list" id="homeTags"></div>
         </div>
@@ -173,7 +183,7 @@
           </div>
           <label class="field"><span>Notes for the report</span><textarea id="sfNotes" rows="2" maxlength="500"></textarea></label>
         </details>
-        <label class="switch"><input type="checkbox" id="sfGps" /><span class="switch-ui" aria-hidden="true"></span><span>Add GPS location to photos</span></label>
+        <label class="switch"><input type="checkbox" id="sfGps" /><span class="switch-ui" aria-hidden="true"></span><span>Record GPS location (real device location)</span></label>
       </form>
       <div class="card">
         <div class="sec-row" style="margin-top:0"><h2 class="card-title" style="margin:0">What you'll capture</h2><button type="button" class="link-btn" id="btnEditThisType">Edit checklist</button></div>
@@ -225,6 +235,7 @@
         <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <div class="qbar" id="capQbar"></div>
         <span class="rec-dot" id="capLive">LIVE</span>
+        <span class="gps-chip" id="capGps" hidden></span>
         <div class="wm" id="capWm" hidden></div>
         <div class="snap-flash" id="capFlash"></div>
       </div>
@@ -329,6 +340,14 @@
       <div class="tag-grid" id="tagGrid"></div>
     </section>
 
+    <!-- PROJECTS & TEAM -->
+    <section class="view" id="view-projects" hidden>
+      <div class="page-head"><h1 class="page-title">Projects &amp; team</h1><button type="button" class="btn btn-ink btn-sm" id="btnNewProject"><svg><use href="#i-plus"/></svg>New project</button></div>
+      <div class="proj-stats" id="projStats"></div>
+      <div class="search"><input type="search" id="projSearch" placeholder="Search project, client, site or member" aria-label="Search projects" /></div>
+      <div class="proj-grid" id="projGrid"></div>
+    </section>
+
     <!-- SETTINGS -->
     <section class="view" id="view-settings" hidden>
       <h1 class="page-title">Settings</h1>
@@ -337,12 +356,42 @@
         <form id="profileForm">
           <div class="grid2">
             <label class="field"><span>Full name</span><input id="pfName" maxlength="80" /></label>
-            <label class="field"><span>Role</span><input id="pfRole" maxlength="80" placeholder="e.g. Safety officer" /></label>
+            <label class="field"><span>Role</span><select id="pfRole"><option>Admin</option><option>Safety manager</option><option>Scaffolding inspector</option><option>Safety team</option></select></label>
             <label class="field"><span>Company</span><input id="pfCompany" maxlength="100" /></label>
             <label class="field"><span>Default site</span><input id="pfSite" maxlength="120" /></label>
           </div>
           <button type="submit" class="btn btn-ink">Save profile</button>
         </form>
+      </div>
+
+      <div class="card" id="aiCard">
+        <h2 class="card-title">AI engine</h2>
+        <p class="ai-status" id="aiStatus"></p>
+        <div class="set-row"><p><b>Inspections use</b><small>Live AI sends photos and camera frames to your AI provider</small></p>
+          <div class="seg" id="aiModeSeg"><button type="button" data-v="demo">Demo results</button><button type="button" data-v="live">Live AI</button></div></div>
+        <div id="aiNotAdmin" hidden><p class="muted">The AI key is managed by the Admin. Switch your role to Admin on the dashboard to change it.</p></div>
+        <div id="aiAdminOnly">
+          <div class="set-row"><p><b>Keep the key</b><small>Server: one key for every user (encrypted). Device: only this browser.</small></p>
+            <div class="seg" id="aiPlaceSeg"><button type="button" data-v="server">On the server</button><button type="button" data-v="device">This device only</button></div></div>
+          <div class="grid2" style="margin-top:.8rem">
+            <label class="field"><span>AI provider</span><select id="aiProvider"><option value="azure">Azure OpenAI</option><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic Claude</option></select></label>
+            <label class="field" id="aiModelRow"><span>Model</span><input id="aiModel" maxlength="120" autocomplete="off" spellcheck="false" /></label>
+          </div>
+          <div class="grid2" id="aiAzureFields">
+            <label class="field"><span>Endpoint</span><input id="aiEndpoint" maxlength="300" placeholder="https://your-resource.openai.azure.com" autocomplete="off" spellcheck="false" /></label>
+            <label class="field"><span>Deployment name</span><input id="aiDeployment" maxlength="120" placeholder="e.g. gpt-4o" autocomplete="off" spellcheck="false" /></label>
+            <label class="field"><span>API version</span><input id="aiApiVersion" maxlength="40" autocomplete="off" spellcheck="false" /></label>
+          </div>
+          <label class="field"><span>API key</span><input id="aiKey" type="password" maxlength="400" autocomplete="off" spellcheck="false" /></label>
+          <p class="muted" id="aiKeyHelp"></p>
+          <label class="field" id="aiAdminKeyRow"><span>Admin key (ADMIN_KEY set in Vercel)</span><input id="aiAdminKey" type="password" maxlength="200" autocomplete="off" /></label>
+          <div class="row-btns"><button type="button" class="btn btn-hivis" id="aiSave">Save</button><button type="button" class="btn btn-line" id="aiTest">Test connection</button><button type="button" class="btn btn-danger" id="aiRemove">Remove key</button></div>
+          <div class="ai-opts">
+            <label class="switch"><input type="checkbox" id="aiVerify" /><span class="switch-ui" aria-hidden="true"></span><span>Double-check every OK with a second AI pass <small class="muted">(more accurate, about 2× the AI cost)</small></span></label>
+            <label class="switch"><input type="checkbox" id="aiGps" /><span class="switch-ui" aria-hidden="true"></span><span>Record the device location (GPS) on every inspection</span></label>
+            <label class="field" style="max-width:260px;margin-top:.5rem"><span>Live scan: send a frame every</span><select id="aiFrameSec"><option value="2">2 seconds</option><option value="3">3 seconds</option><option value="5">5 seconds</option></select></label>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -382,7 +431,7 @@
   <!-- TAB BAR (mobile) -->
   <nav class="tabbar" id="tabbar" aria-label="Main">
     <button type="button" data-go="home"><svg><use href="#i-home"/></svg><span>Home</span></button>
-    <button type="button" data-go="setup"><svg><use href="#i-clip"/></svg><span>Inspect</span></button>
+    <button type="button" data-go="projects"><svg><use href="#i-team"/></svg><span>Projects</span></button>
     <button type="button" data-go="scan" class="tab-scan"><i><svg><use href="#i-scan"/></svg></i><span>Scan</span></button>
     <button type="button" data-go="tags"><svg><use href="#i-tag"/></svg><span>Tags</span></button>
     <button type="button" data-go="reports"><svg><use href="#i-history"/></svg><span>Reports</span></button>
@@ -392,9 +441,10 @@
   <div id="printArea"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/qr.js?v=5.7.0"></script>
-  <script src="js/demo-data.js?v=5.7.0"></script>
-  <script src="js/media.js?v=5.7.0"></script>
-  <script src="js/app.js?v=5.7.0"></script>
+  <script src="js/qr.js?v=6.0.0"></script>
+  <script src="js/demo-data.js?v=6.0.0"></script>
+  <script src="js/media.js?v=6.0.0"></script>
+  <script src="js/workspace.js?v=6.0.0"></script>
+  <script src="js/app.js?v=6.0.0"></script>
 </body>
 </html>

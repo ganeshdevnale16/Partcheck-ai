@@ -1,96 +1,69 @@
-# Inspection AI – Client Demo (v5.7, corrected site report, no confidence %)
+# Inspection AI v6.0
 
-Demo build of Inspection AI for client presentations. Every screen and flow works like the real product,
-but **no AI backend or API keys are needed**: the camera shows real scaffold site photos and the AI findings
-are pre-recorded. The real tool is developed separately.
+Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
+Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
 
-## Demo script (5 minutes)
-1. **Sign in** – any name, any password.
-2. **Dashboard** – KPIs, weekly chart, recent reports, tag status.
-3. **QR tags** → **Create QR tag** (pick *Pass* or *Fail* as the demo outcome) → print / download the label.
-4. **Scan** (yellow button) → pick the tag → it is detected → **Start live scan**.
-   The camera pans to each part, boxes lock on, checks tick off, damage is flagged. Use **1× / 2× / 4×** for speed.
-5. **Result** – Green / Yellow / Red tag, findings, corrective actions, your decision, sign-off → **Save**.
-6. **Open full report** → **Print / Save PDF** (A4 report with photos, checklist, signature and tag QR).
-7. **Reports** – two sample reports are always there: **SC-014 (PASS)** and **SC-027 (FAIL)**.
+## What's new in v6.0
+- **Real AI** – photo-by-photo and live camera scan are analysed by your AI provider (Settings → AI engine).
+- **Real location** – device GPS + street address on photos, result and PDF, with an Open in Maps link.
+- **Role dashboards** – Admin, Safety manager, Scaffolding inspector, Safety team (demo data, charts, KPI cards).
+- **Edit after the AI** – change any line's result, criticality (Critical / Major / Minor) or note; the result recalculates.
+  A Minor item that is Not OK gives Yellow, not Red. Edited lines are marked in the report and CSV.
+- **Projects & team** – projects with dates, status, progress and members (name, email, phone, role).
+- **Alerts** – bell with unread badge, alerts per role; saving a Red report raises a real alert.
 
-Also works: Photo-by-photo mode, other inspection types, custom types with "Suggest with AI",
-remarks, CSV export, share, install as an app, offline use.
+## Turn on real AI
+1. Deploy on Vercel (the `api` folder becomes serverless functions automatically).
+2. In the app: change the dashboard role to **Admin** → **Settings → AI engine**.
+3. Choose **Live AI**, pick the provider, enter the key, press **Test connection**, then **Save**.
 
-**Real QR scanning:** in Scan, tap **Demo → Device** to use the phone camera on a printed tag.
-Scanning a printed tag with a phone's normal camera also opens the app straight to that scaffold.
-(QR links point to the address the demo runs on, so print labels from the deployed URL.)
+Where the key is kept:
+| Option | What it means | Needs |
+|---|---|---|
+| **On the server** (recommended) | One key for every user, stored encrypted (AES-256) in Redis; never sent back to the browser | Upstash Redis + `ADMIN_KEY` in Vercel |
+| **This device only** | Key stays in this browser and is sent with each AI request over HTTPS | Nothing |
+| **Environment variables** | Put the key in Vercel env vars (see `.env.example`) | Redeploy after changing |
+
+Provider details:
+- **Azure OpenAI** – endpoint `https://<resource>.openai.azure.com`, key, deployment name of a vision model (gpt-4o / gpt-4.1), API version `2024-10-21`.
+- **OpenAI** – key from platform.openai.com, model e.g. `gpt-5-mini` or `gpt-4.1-mini`.
+- **Google Gemini** – key from aistudio.google.com, model e.g. `gemini-2.5-flash`.
+- **Anthropic Claude** – key from console.anthropic.com, model e.g. `claude-sonnet-5-5`.
+Model names are editable in Settings if your account uses different ones.
+
+How the AI checks work:
+- **Photo mode** – all photos go in one request; every checklist item comes back OK / Not OK / Unclear with evidence,
+  a box on the photo, defects and corrective actions. Optional second pass re-checks every OK (about 2× the AI cost).
+- **Live scan** – a camera frame every 2/3/5 s. A check is confirmed only after the AI sees it in **two frames**.
+  Unconfirmed checks are marked Unclear. Without a camera (desktop), the AI checks the sample photos instead.
+
+## Vercel setup
+1. Push to GitHub, import in Vercel (framework: Other; output directory `public` is set in `vercel.json`).
+2. Storage → add **Upstash Redis** (gives `UPSTASH_REDIS_REST_URL` / `_TOKEN`; also used by the activity log).
+3. Environment variables → add `ADMIN_KEY` (a long secret). Redeploy.
+`vercel.json` gives `/api/ai` 60 seconds to answer. Note: Vercel's free Hobby plan is for non-commercial use.
 
 ## Run locally
 ```
 npm install
-npm start          # http://localhost:3000
+npm start        # http://localhost:3000 – serves the app and the same /api functions
 ```
+Put env vars in your shell or use "This device only" for the key.
 
-## Deploy
-- **Render**: push to GitHub → New Web Service → build `npm install`, start `npm start` (or use render.yaml).
-- **Vercel / Netlify**: static site, output directory `public`, no build command.
-
-## Photos
-Real scaffold photos load from Wikimedia Commons (CC BY-SA). For a demo that never depends on the internet:
-```
-npm run images     # saves the photos into public/demo/images
-```
-To use your own site photos: put them in `public/demo/images` and map them in `manifest.json`
-(keys: p-base, p-elev, p-plat, p-ladder = PASS views; f-base, f-elev, f-plat, f-ladder = FAIL views;
-x-site = home background; x-net = scanner background). Tag close-ups are drawn by the app.
-If a photo can't load, the app draws a fallback image so the demo never breaks.
+## Security notes
+- Anyone with the site link can trigger AI calls on your key. With Redis connected, each network is limited to
+  240 AI calls per hour. Add real user accounts before sharing widely.
+- Logins are still demo logins (any password). Roles are chosen in the dashboard dropdown.
+- Photos are sent to the AI provider you choose; check their data policy with your client.
 
 ## Files
 ```
-public/index.html        all screens
-public/styles.css        design
-public/js/app.js         app logic (screens, live scan, photo mode, QR tags, scanner, results, reports)
-public/js/demo-data.js   checklists, scripted PASS / FAIL findings, sample tags, photo list
-public/js/media.js       photo loading + drawn tag close-ups and fallbacks
-public/js/qr.js          built-in QR code generator (no internet needed)
-scripts/download-demo-images.mjs
-render-server.js         static server
+api/_ai.js          providers (Azure OpenAI, OpenAI, Gemini, Claude), prompts, encrypted key storage
+api/ai.js           POST /api/ai – evaluate photos, live frames, test, suggest
+api/ai-config.js    GET/POST/DELETE /api/ai-config – server-saved AI key (admin key required)
+api/log.js, logs.js activity log (Upstash Redis)
+public/js/app.js        app: inspections, live scan, results, reports, QR tags, settings, AI client
+public/js/workspace.js  role dashboards + charts, projects & team, alerts
+public/js/demo-data.js  checklists, demo scenarios, sample tags
+render-server.js        local / Render server (same /api)
 ```
-Reset everything anytime: **Settings → Demo controls → Reset**.
-
-## Real site photos (v5.5)
-Tag **SC-040** uses the client's own site photos (`public/demo/images/site-*.jpg`) with findings written from those photos.
-A ready-made report for it (21 Oct 2026, Red – do not use) is in Reports. Any scaffold tag can use these photos:
-open the tag and set **Demo outcome → Site photos**, or pick **Site photos** on the details screen.
-
-## Theme (v5.2) – Deloitte brand palette
-| Use | Colour |
-|---|---|
-| Brand accent, main buttons, "OK" boxes on photos | Deloitte Green #86BC25 (black text) |
-| Sidebar, headers, camera screens | Black #000000, Dark Gray #222222 |
-| Page background / borders / secondary text | Light Gray #E6E6E6, Cool Gray 2 #D0D0CE, Cool Gray 11 #53565A |
-| PASS (Green tag) | Deep Green #046A38 (white text, 6.7:1) |
-| Light green panels | Pale Green #F1F6E4 |
-| FAIL / CAUTION (functional only) | Red #DA291C, Yellow #FFCD00 |
-| Secondary accents | Teal 6 #007680, Teal 1 #DDEFE8, Blue 7 #012169, Blue 8 #041E42 |
-
-Bright Green / Bright Teal / Bright Blue are not used. Red and yellow appear only as pass/fail status.
-All colours are in the `:root` block at the top of `public/styles.css`. Font: Open Sans.
-
-**Client logo (optional):** put a file at `public/brand/client-logo.png`. It appears in the sidebar and on every
-PDF report header. If the file is missing nothing shows. Only use a client's logo with their permission.
-
-## Activity log (v5.8)
-Sign-in now uses an **email ID** (any email, any password). Every action is appended as one JSON line to `logs/activity.log`:
-time, email, action, page, details (tag ID, result…), session, IP, browser.
-
-Logged actions: login, logout, session_resume, page_view, inspection_start, inspection_complete, decision_changed,
-report_saved, report_opened, report_print_pdf, report_shared, csv_export, tag_created, tag_deleted, tag_scanned,
-tag_label_print, tag_label_download, demo_reset. Passwords are never logged.
-
-Download the log: set an environment variable `ADMIN_KEY` (any secret), then open
-`https://YOUR-APP/api/logs?key=YOUR_SECRET` (add `&format=csv` for Excel).
-Render free plan wipes files on redeploy/restart: download regularly or attach a Render Disk and set `LOG_DIR` to its mount path.
-
-### Vercel
-Vercel cannot write files, so on Vercel the log goes to a Redis database (`api/log.js`, `api/logs.js`).
-1. Vercel project > Storage > add **Upstash Redis** (free) and connect it to the project (env vars are added automatically).
-2. Set `ADMIN_KEY`, then redeploy.
-3. Download: `https://YOUR-APP.vercel.app/api/logs?key=YOUR_SECRET` (add `&format=csv` for Excel).
-Every event is also printed in Vercel > Logs as `ACTIVITY {...}`.

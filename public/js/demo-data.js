@@ -182,7 +182,7 @@
       'Toe boards': S('missing', 0.86, 'No toe board along the open edge of the platform – guardrail is incomplete',
         { poly: [[0.686, 0.386], [0.653, 0.444], [0.339, 0.361], [0.097, 0.246], [0.163, 0.13], [0.684, 0.359]] }, 'Access ladder'),
       'Platform clear': S('present', 0.68, 'No stacked material seen on the platform through the open planks', [0.1, 0.17, 0.4, 0.24]),
-      'Access ladder': S('missing', 0.86, 'Ladder rests against the scaffold with no visible tie, almost no extension above the platform level, and no landing platform at the top of the ladder', [0.33, 0.15, 0.64, 0.37]),
+      'Access ladder': S('missing', 0.86, 'Ladder rests against the scaffold with no visible tie, almost no extension above the platform level, and no landing platform at the top of the ladder', [0.33, 0.21, 0.64, 0.31]),
       'Scaffold tag': S('missing', 0.82, 'No inspection tag or status board visible at the ladder access point', [0.45, 0.62, 0.3, 0.36]),
       'Couplers / clamps': S('present', 0.8, 'Couplers fitted at the base node; none hanging loose', [0.28, 0.19, 0.26, 0.17]),
       'Tube condition': S('present', 0.78, 'Tubes straight; no bent or cracked tubes seen', null),

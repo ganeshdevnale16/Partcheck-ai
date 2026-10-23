@@ -218,12 +218,15 @@
     const critUnclear = rows.filter((c) => c.critical && c.status === 'unclear').length;
     const reasons = [];
     if (critFail) reasons.push(`${critFail} critical safety check${critFail > 1 ? 's' : ''} failed`);
-    if (missing) reasons.push(`${missing} check${missing > 1 ? 's' : ''} failed`);
+    const minorFail = rows.filter((c) => c.severity === 'minor' && c.status === 'missing').length;
+    const seriousFail = missing - minorFail;
+    if (seriousFail) reasons.push(`${seriousFail} check${seriousFail > 1 ? 's' : ''} failed`);
+    if (minorFail) reasons.push(`${minorFail} minor point${minorFail > 1 ? 's' : ''} to fix`);
     if (critUnclear) reasons.push(`${critUnclear} critical check${critUnclear > 1 ? 's' : ''} not confirmed`);
     if (high) reasons.push(`${high} serious defect${high > 1 ? 's' : ''} found`);
     if (unclear) reasons.push(`${unclear} check${unclear > 1 ? 's' : ''} could not be confirmed`);
     let status = 'PASS';
-    if (missing || high) status = 'FAIL'; else if (unclear) status = 'REVIEW';
+    if (seriousFail || high) status = 'FAIL'; else if (unclear || minorFail) status = 'REVIEW';
     if (status === 'PASS') reasons.push('All checks confirmed twice');
     return { status, completion, counts: { total, present, missing, unclear }, reasons };
   }
@@ -290,7 +293,7 @@
   }
   // report built from the client's real site photos (taken 21 Oct 2026, 11:08–11:09)
   function seedSite(force = false) {
-    const FLAG = 'ia_seed_site_v3';
+    const FLAG = 'ia_seed_site_v4';
     if (!force && LS.get(FLAG, false)) return;
     const def = D.ASSETS.find((a) => a.id === 'SC-040');
     let asset = getAsset('SC-040');
@@ -346,7 +349,7 @@
 
   // ---------- navigation ----------
   const CAM_VIEWS = ['capture', 'live', 'scan'];
-  const NAV_OF = { home: 'home', setup: 'setup', details: 'setup', editor: 'settings', capture: 'setup', live: 'setup', scan: 'scan', result: 'reports', reports: 'reports', tags: 'tags', settings: 'settings' };
+  const NAV_OF = { projects: 'projects', home: 'home', setup: 'setup', details: 'setup', editor: 'settings', capture: 'setup', live: 'setup', scan: 'scan', result: 'reports', reports: 'reports', tags: 'tags', settings: 'settings' };
   const leaveHooks = [];
   function show(view, opts = {}) {
     const prev = state.view;
@@ -364,7 +367,7 @@
   }
   const RENDER = {};
   function safeView(v) {
-    const ok = ['home', 'setup', 'details', 'editor', 'capture', 'live', 'scan', 'result', 'reports', 'tags', 'settings'];
+    const ok = ['projects', 'home', 'setup', 'details', 'editor', 'capture', 'live', 'scan', 'result', 'reports', 'tags', 'settings'];
     if (!ok.includes(v)) return 'home';
     if (['capture', 'live'].includes(v) && !state.cur) return 'setup';
     if (v === 'details' && !getType(state.selTypeId)) return 'setup';
@@ -439,7 +442,7 @@
   $('#loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = $('#loginUser').value.trim().toLowerCase();
-    const name = email.split('@')[0];
+    const name = email.split('@')[0].split(/[._-]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') || email;
     const err = (m) => { $('#loginErr').textContent = m; const c = $('.login-card'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); };
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { err('Enter a valid email ID.'); $('#loginUser').focus(); return; }
     if (!$('#loginPass').value) { err('Enter any password.'); $('#loginPass').focus(); return; }
@@ -629,6 +632,8 @@
     $('#scenarioSeg [data-v="site"]').hidden = t.module !== 'scaffold';
     if (t.module !== 'scaffold' && state.scenario === 'site') state.scenario = 'pass';
     paintScenario();
+    $('.scenario-box').hidden = aiLive();
+    $('#sfGps').checked = aiSettings().gps;
     $('#planSteps').innerHTML = t.angles.map((v) => {
       const crit = v.parts.filter((p) => splitCheck(p).critical).length;
       return `<li><b>${esc(v.name)}</b><span>${v.parts.length} check${v.parts.length === 1 ? '' : 's'}${crit ? `, ${crit} critical` : ''}. ${esc(v.guidance || '')}</span></li>`;
@@ -651,7 +656,6 @@
       height: t.module === 'scaffold' ? readMeters($('#sfHeight'), 'Height') : '', length: t.module === 'scaffold' ? readMeters($('#sfLength'), 'Length') : '', lifts: $('#sfLifts').value, duty: $('#sfDuty').value, swl: t.module === 'scaffold' ? readSwl($('#sfSwl')) : '', erector: $('#sfErector').value.trim(),
       lastInspection: $('#sfLast').value, reason: $('#sfReason').value, inspector: $('#sfInspector').value.trim(), notes: $('#sfNotes').value.trim(),
     });
-    if ($('#sfGps').checked) getGps(rec);
     return rec;
   }
   function getGps(rec) {
@@ -708,7 +712,7 @@
       img.src = src;
     });
   }
-  const wmText = (rec, view, ts) => `${rec.asset.id || rec.typeName}  |  ${view}  |  ${new Date(ts || Date.now()).toLocaleString()}${rec.meta.gps ? `  |  ${rec.meta.gps.lat}, ${rec.meta.gps.lng}` : ''}`;
+  const wmText = (rec, view, ts) => `${rec.asset.id || rec.typeName}  |  ${view}  |  ${new Date(ts || Date.now()).toLocaleString()}${rec.meta.gps ? `  |  ${rec.meta.gps.address ? rec.meta.gps.address.split(',').slice(0, 2).join(',') + ' ' : ''}${rec.meta.gps.lat}, ${rec.meta.gps.lng}` : ''}`;
   async function openDeviceCamera(video) {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera is not available in this browser.');
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false });
@@ -727,6 +731,10 @@
     show('capture');
     renderCapture();
     loop();
+    paintGpsChip();
+    if (!state.cur.meta.gps) captureLocation(state.cur);
+    // with real AI, start on the device camera when there is one
+    if (aiLive() && P.source === 'demo' && navigator.mediaDevices?.getUserMedia) $('#capSource').click();
   }
   async function loadViewImage() {
     const a = state.cur.angles[P.idx];
@@ -858,6 +866,14 @@
     const cur = state.cur;
     const missingViews = cur.angles.filter((a) => !cur.shots[a.name] && a.parts.length);
     if (missingViews.length && !confirm(`No photo yet for: ${missingViews.map((a) => a.name).join(', ')}.\nTheir checks will be marked Not OK. Check anyway?`)) return;
+    if (aiLive()) {
+      stopPhoto();
+      try { cur.result = await evaluateWithAi(cur); }
+      catch (e) { toast(e.message, true); loop(); return; }
+      track('inspection_complete', { mode: 'photo-ai', tag: cur.asset?.id, result: TAG_LABEL[resultTag(cur)] });
+      cur.saved = false; renderResult(); show('result');
+      return;
+    }
     stopPhoto();
     const first = Object.values(cur.shots)[0]?.src;
     await analyse(first, ['Reading photos and view angles', `Checking ${cur.angles.reduce((n, a) => n + a.parts.length, 0) + cur.general_parts.length} points`, 'Looking for damage and defects', 'Second check of every OK', 'Building the result'], 4600);
@@ -876,6 +892,9 @@
   const T = { intro: 1300, per: 1650, outro: 900 };
 
   async function startLive() {
+    if (aiLive()) { track('inspection_start', { mode: 'live-ai', tag: state.cur?.asset?.id, type: state.cur?.typeName }); captureLocation(state.cur); return startLiveAi(); }
+    RL.on = false; $('#lvSkip').textContent = 'Skip view';
+    if (!state.cur.meta.gps) captureLocation(state.cur);
     const rec = state.cur;
     track('inspection_start', { mode: 'live', tag: rec.asset?.id, type: rec.typeName });
     rec.mode = 'live';
@@ -1083,20 +1102,22 @@
     renderResult();
     show('result');
   }
-  $('#lvFinish').addEventListener('click', () => finishLive(true));
+  $('#lvFinish').addEventListener('click', () => (RL.on ? finishLiveAi(true) : finishLive(true)));
   $('#lvClose').addEventListener('click', () => {
-    if (!state.cur?.result && L.resolved.size && !confirm('Stop the live scan? Progress will be lost.')) return;
+    if (!state.cur?.result && (RL.on ? RL.decided.size : L.resolved.size) && !confirm('Stop the live scan? Progress will be lost.')) return;
     show(state.fromAsset ? 'home' : 'details');
   });
   function paintPause() { $('#lvPause').innerHTML = `<svg><use href="#${L.paused ? 'i-play' : 'i-pause'}"/></svg>`; $('#lvState').textContent = L.paused ? 'Paused' : 'Scanning'; $('#lvState').classList.toggle('scan', !L.paused); }
-  $('#lvPause').addEventListener('click', () => { L.paused = !L.paused; paintPause(); });
+  $('#lvPause').addEventListener('click', () => { if (RL.on) { RL.paused = !RL.paused; paintPauseAi(); return; } L.paused = !L.paused; paintPause(); });
   function paintSpeed() { $('#lvSpeed').textContent = `${state.speed}×`; }
-  $('#lvSpeed').addEventListener('click', () => { state.speed = state.speed === 1 ? 2 : state.speed === 2 ? 4 : 1; LS.set('ia_speed', state.speed); paintSpeed(); toast(`Demo speed ${state.speed}×`); });
+  $('#lvSpeed').addEventListener('click', () => { if (RL.on) { toast(`Real AI: a frame every ${aiSettings().frameSec} s`); return; } state.speed = state.speed === 1 ? 2 : state.speed === 2 ? 4 : 1; LS.set('ia_speed', state.speed); paintSpeed(); toast(`Demo speed ${state.speed}×`); });
   $('#lvSkip').addEventListener('click', () => {
+    if (RL.on) { const v = state.cur.angles.map((a) => a.name); RL.view = v[(v.indexOf(RL.view) + 1) % v.length]; RL.pinnedAt = Date.now(); setLiveHint('Point the camera at the ' + RL.view.toLowerCase()); renderLiveAiList(); return; }
     const s = L.steps[L.stepIdx]; if (!s || L.done) return;
     L.t = Math.min(L.total - 1, s.start + s.dur);
   });
   $('#lvShoot').addEventListener('click', () => {
+    if (RL.on) { const img = grabFrame(); if (img) { RL.shots[RL.view] = { src: img, frameId: -1, ts: new Date().toISOString() }; flash($('#lvFlash')); toast(`Photo saved to "${RL.view}"`); } if (!RL.busy) scheduleFrame(0); return; }
     const s = L.steps[L.stepIdx]; if (!s) return;
     flash($('#lvFlash')); toast(`Photo saved to "${s.view}"`);
   });
@@ -1395,11 +1416,12 @@
   function partRow(c) {
     const sc = splitCheck(c.part);
     const where = c.foundIn && c.foundIn !== c.group ? `Seen in the ${c.foundIn.toLowerCase()} photo. ` : '';
+    const sev = sevOf(c);
     return `<li class="${c.status}"><span class="ic ${c.status}" aria-label="${STATUS_TEXT[c.status]}">${ICON[c.status]}</span>
-      <span><span class="pn">${c.critical ? '<span class="crit">Critical</span>' : ''}${esc(sc.name)}</span>
+      <span><span class="pn"><span class="sevchip ${sev}">${SEVS[sev]}</span>${esc(sc.name)}${c.edited ? '<span class="edited">Edited</span>' : ''}</span>
       ${sc.rule ? `<span class="prule">Must be: ${esc(sc.rule)}</span>` : ''}
       <span class="pnote">${esc(STATUS_TEXT[c.status] + '. ' + where + cap(c.note || ''))}</span></span>
-</li>`;
+      <button type="button" class="row-edit" data-edit-row="${esc(c.id)}" aria-label="Edit ${esc(sc.name)}">Edit</button></li>`;
   }
   function ringSvg(pct, color) {
     const L = 97.4;
@@ -1416,7 +1438,7 @@
     const tt = tagWords(rec, tag);
     const a = rec.asset;
     const ov = rec.override?.status || '';
-    const bad = r.checklist.filter((c) => c.status === 'missing').sort((x, y) => Number(y.critical) - Number(x.critical));
+    const bad = r.checklist.filter((c) => c.status === 'missing').sort((x, y) => ({ critical: 0, major: 1, minor: 2 }[sevOf(x)] - { critical: 0, major: 1, minor: 2 }[sevOf(y)]));
     const unc = r.checklist.filter((c) => c.status === 'unclear');
     const attention = [...bad, ...unc];
     const groups = [...rec.angles.map((x) => x.name), ...(r.checklist.some((c) => c.group === ANY) ? [ANY] : [])];
@@ -1469,9 +1491,9 @@
             <label class="signoff"><input type="checkbox" id="signoff" ${rec.signoff?.done ? 'checked' : ''} /><span>${isSafety(rec) ? `I have inspected this ${esc(rec.typeName.toLowerCase())} in person as a competent person and agree with this result.` : 'I have checked this result.'}</span></label>
           </div>
           <div class="card"><h2 class="card-title">Why this result</h2><ul class="reasons">${r.reasons.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
-            ${details ? `<p class="muted">Details: ${esc(details)}.</p>` : ''}${rec.meta.notes ? `<p class="muted">Notes: ${esc(rec.meta.notes)}</p>` : ''}${rec.meta.gps ? `<p class="muted">GPS: ${rec.meta.gps.lat}, ${rec.meta.gps.lng}</p>` : ''}</div>
-          <div class="card"><h2 class="card-title">All checks and photos</h2>${groupHtml}</div>
-          <p class="disclaimer">${rec.module === 'scaffold' ? 'AI pre-inspection only, not a scaffold certificate. A competent person must inspect and sign the tag before use.' : 'AI pre-inspection only. A competent person must confirm.'}${r.liveStats ? ` Live scan checked ${r.liveStats.frames} frames in ${r.liveStats.seconds} s.` : ''} Every OK was double-checked.</p>
+            ${details ? `<p class="muted">Details: ${esc(details)}.</p>` : ''}${rec.meta.notes ? `<p class="muted">Notes: ${esc(rec.meta.notes)}</p>` : ''}${rec.meta.gps ? `<p class="muted gps-line">📍 ${esc(gpsText(rec.meta.gps))} · <a href="${mapsLink(rec.meta.gps)}" target="_blank" rel="noopener">Open in Maps</a></p>` : ''}${r.engine ? `<p class="muted">Checked by: ${esc(r.engine)}</p>` : ''}</div>
+          <div class="card"><h2 class="card-title">All checks and photos</h2><p class="muted">Tap <b>Edit</b> on any line to change the result, the criticality or the note.</p>${groupHtml}</div>
+          <p class="disclaimer">${rec.module === 'scaffold' ? 'AI pre-inspection only, not a scaffold certificate. A competent person must inspect and sign the tag before use.' : 'AI pre-inspection only. A competent person must confirm.'}${r.liveStats ? ` Live scan checked ${r.liveStats.frames} frames in ${r.liveStats.seconds} s.` : ''}${r.demo === false ? (r.secondCheck ? ' Every OK was double-checked by the AI.' : '') : ' Every OK was double-checked.'}${rec.result.checklist.some((c) => c.edited) ? ' Lines marked Edited were changed by the inspector.' : ''}</p>
         </div>
       </div>`;
 
@@ -1490,6 +1512,7 @@
       if (rec.mode === 'live') { rec.shots = {}; startLive(); } else startPhoto();
     });
     $$('#view-result [data-zoom]').forEach((el) => el.addEventListener('click', () => zoom(el)));
+    $$('#view-result [data-edit-row]').forEach((b) => b.addEventListener('click', () => openRowEditor(b.dataset.editRow)));
   }
   function zoom(el) {
     const lb = document.createElement('div');
@@ -1545,8 +1568,8 @@
   function exportCsv(list) {
     track('csv_export', { reports: list.length, tag: list.length === 1 ? list[0].asset?.id : undefined });
     const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const head = ['Report no.', 'Inspection type', 'ID', 'Location', 'Inspector', 'Date', 'Result', 'Checks OK', 'View', 'Check', 'Critical', 'Status', 'Evidence', 'Remarks'];
-    const rows = list.flatMap((rec) => rec.result.checklist.map((c) => [rec.reportNo || '', rec.typeName, rec.asset.id, rec.asset.location, rec.meta.inspector, fmtDate(rec.result.evaluatedAt), TAG_LABEL[resultTag(rec)], `${rec.result.counts.present} of ${rec.result.counts.total}`, c.group, splitCheck(c.part).name, c.critical ? 'yes' : '', STATUS_TEXT[c.status], c.note, rec.override?.remarks]));
+    const head = ['Report no.', 'Inspection type', 'ID', 'Location', 'Inspector', 'Date', 'Result', 'Checks OK', 'View', 'Check', 'Criticality', 'Status', 'Evidence', 'Edited by inspector', 'Remarks'];
+    const rows = list.flatMap((rec) => rec.result.checklist.map((c) => [rec.reportNo || '', rec.typeName, rec.asset.id, rec.asset.location, rec.meta.inspector, fmtDate(rec.result.evaluatedAt), TAG_LABEL[resultTag(rec)], `${rec.result.counts.present} of ${rec.result.counts.total}`, c.group, splitCheck(c.part).name, SEVS[sevOf(c)], STATUS_TEXT[c.status], c.note, c.edited ? 'yes' : '', rec.override?.remarks]));
     const csv = '\uFEFF' + [head, ...rows].map((r) => r.map(q).join(',')).join('\r\n');
     download(list.length === 1 ? `${slug(list[0].typeName)}-${slug(list[0].asset.id)}.csv` : `inspection-reports-${isoDay(Date.now())}.csv`, csv, 'text/csv;charset=utf-8');
   }
@@ -1576,17 +1599,18 @@
         <div><h2>Inspection</h2><table class="kvt"><tbody>
           <tr><td>Inspector</td><td><b>${esc(rec.meta.inspector)}</b></td></tr><tr><td>Company</td><td>${esc(rec.meta.company || state.profile.company || '–')}</td></tr>
           <tr><td>Method</td><td>${rec.mode === 'live' ? `Live camera scan${r.liveStats ? `, ${r.liveStats.frames} frames in ${r.liveStats.seconds} s` : ''}` : `${groups.length} photos`}</td></tr>
-          <tr><td>AI checks</td><td>${r.counts.total} points, every OK double-checked</td></tr>
+          <tr><td>AI checks</td><td>${r.counts.total} points${r.demo === false ? (r.secondCheck ? ', every OK double-checked' : '') : ', every OK double-checked'}${r.engine ? `<br /><small>${esc(r.engine)}</small>` : ''}</td></tr>
+          ${rec.meta.gps ? `<tr><td>GPS location</td><td>${esc(gpsText(rec.meta.gps))}<br /><small>${mapsLink(rec.meta.gps)}</small></td></tr>` : ''}
           <tr><td>Next inspection</td><td>${tag === 'GREEN' ? esc(fmtDay(new Date(r.evaluatedAt).getTime() + 7 * 864e5)) : 'After corrective action'}</td></tr>
-          ${rec.meta.gps ? `<tr><td>GPS</td><td>${rec.meta.gps.lat}, ${rec.meta.gps.lng}</td></tr>` : ''}</tbody></table></div>
+          </tbody></table></div>
       </div>
       ${findings.length ? `<h2>Findings</h2><table><thead><tr><th style="width:26%">Check</th><th style="width:16%">View</th><th style="width:11%">Status</th><th>Evidence</th></tr></thead><tbody>
-        ${findings.map((c) => `<tr><td>${c.critical ? '<b style="color:var(--stop)">Critical · </b>' : ''}${esc(splitCheck(c.part).name)}</td><td>${esc(c.group === ANY ? c.foundIn || 'Any view' : c.group)}${c.foundIn && c.group !== ANY && c.foundIn !== c.group ? `<br /><small>photo: ${esc(c.foundIn)}</small>` : ''}</td><td class="st ${c.status}">${STATUS_TEXT[c.status]}</td><td>${esc(cap(c.note))}</td></tr>`).join('')}</tbody></table>` : ''}
+        ${findings.map((c) => `<tr><td><b class="sev-${sevOf(c)}">${SEVS[sevOf(c)]} · </b>${esc(splitCheck(c.part).name)}${c.edited ? ' <small>(edited)</small>' : ''}</td><td>${esc(c.group === ANY ? c.foundIn || 'Any view' : c.group)}${c.foundIn && c.group !== ANY && c.foundIn !== c.group ? `<br /><small>photo: ${esc(c.foundIn)}</small>` : ''}</td><td class="st ${c.status}">${STATUS_TEXT[c.status]}</td><td>${esc(cap(c.note))}</td></tr>`).join('')}</tbody></table>` : ''}
       ${ai.defects?.length ? `<h2>Defects</h2><table><thead><tr><th style="width:14%">Severity</th><th>Description</th><th style="width:22%">Where</th></tr></thead><tbody>${ai.defects.map((d) => `<tr><td class="st ${d.severity === 'high' ? 'missing' : 'unclear'}">${esc(cap(d.severity))}</td><td>${esc(d.description)}</td><td>${esc(d.angle || '')}</td></tr>`).join('')}</tbody></table>` : ''}
       ${ai.recommendations?.length ? `<div class="avoid"><h2>${tag === 'GREEN' ? 'Next steps' : 'Corrective actions required'}</h2><ol style="margin:0;padding-left:5mm">${ai.recommendations.map((x) => `<li>${esc(x)}</li>`).join('')}</ol></div>` : ''}
       ${groups.length ? `<h2>Photo evidence</h2><div class="doc-photos">${groups.map((g) => `<figure>${annoHtml(rec, g, rec.shots[g], false)}<figcaption><b>${esc(g)}</b>${r.checklist.filter((c) => c.group === g).length ? ` – ${r.checklist.filter((c) => c.group === g && c.status === 'present').length} of ${r.checklist.filter((c) => c.group === g).length} OK` : ''}</figcaption></figure>`).join('')}</div>` : ''}
       <h2>Full checklist</h2><table><thead><tr><th style="width:18%">View</th><th style="width:27%">Check</th><th style="width:11%">Status</th><th>Evidence</th></tr></thead><tbody>
-        ${r.checklist.map((c) => `<tr><td>${esc(c.group)}</td><td>${c.critical ? '<b>! </b>' : ''}${esc(splitCheck(c.part).name)}</td><td class="st ${c.status}">${STATUS_TEXT[c.status]}</td><td>${esc(cap(c.note))}</td></tr>`).join('')}</tbody></table>
+        ${r.checklist.map((c) => `<tr><td>${esc(c.group)}</td><td>${esc(splitCheck(c.part).name)}<br /><small>${SEVS[sevOf(c)]}${c.edited ? ' · edited by inspector' : ''}</small></td><td class="st ${c.status}">${STATUS_TEXT[c.status]}</td><td>${esc(cap(c.note))}</td></tr>`).join('')}</tbody></table>
       <div class="avoid"><h2>Sign-off</h2>
         ${rec.override?.remarks ? `<p><b>Remarks:</b> ${esc(rec.override.remarks)}</p>` : ''}
         <div class="doc-sign">
@@ -1628,19 +1652,19 @@
   // ======================= SETTINGS =======================
   RENDER.settings = () => {
     const p = state.profile;
-    $('#pfName').value = p.name || ''; $('#pfRole').value = p.role || ''; $('#pfCompany').value = p.company || ''; $('#pfSite').value = p.site || '';
+    $('#pfName').value = p.name || ''; $('#pfRole').value = state.role; $('#pfCompany').value = p.company || ''; $('#pfSite').value = p.site || '';
     $('#profAvatar').textContent = initialsOf(p.name);
     $('#profName').textContent = p.name || 'Your name';
     $('#profSub').textContent = [p.role, p.company].filter(Boolean).join(', ');
     $$('#speedSeg button').forEach((b) => b.classList.toggle('on', +b.dataset.v === state.speed));
-    renderTypeList(); renderInstall();
+    renderTypeList(); renderInstall(); paintAi(); loadServerAi();
     let bytes = 0; try { bytes = (localStorage.getItem('ia_history') || '').length; } catch { /* ignore */ }
     $('#dataInfo').textContent = `${state.history.length} report${state.history.length === 1 ? '' : 's'} and ${state.assets.length} QR tags on this device (${(bytes / 1048576).toFixed(1)} MB).`;
   };
   function initialsOf(n) { return (String(n || '').trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('') || '?').toUpperCase(); }
   $('#profileForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    state.profile = { name: $('#pfName').value.trim(), role: $('#pfRole').value.trim(), company: $('#pfCompany').value.trim(), site: $('#pfSite').value.trim() };
+    state.profile = { name: $('#pfName').value.trim(), role: state.role, company: $('#pfCompany').value.trim(), site: $('#pfSite').value.trim() };
     LS.set('ia_profile', state.profile); syncSampleNames(); paintProfile(); RENDER.settings(); toast('Profile saved');
   });
   $$('#speedSeg button').forEach((b) => b.addEventListener('click', () => { state.speed = +b.dataset.v; LS.set('ia_speed', state.speed); RENDER.settings(); }));
@@ -1765,6 +1789,490 @@
     img.dataset.fixed = '1';
     M.getImage(img.dataset.key).then((r) => { if (r.src !== img.src) img.src = r.src; }).catch(() => {});
   }, true);
+
+  // ======================= REAL AI (Azure OpenAI / OpenAI / Gemini / Claude) =======================
+  const AI_DEFAULTS = { mode: 'demo', keyPlace: 'server', device: { provider: 'gemini', apiKey: '', model: '', endpoint: '', deployment: '', apiVersion: '2024-10-21' }, verify: true, frameSec: 3, gps: true };
+  const PROVIDER_INFO = {
+    azure: { label: 'Azure OpenAI', model: '' },
+    openai: { label: 'OpenAI', model: 'gpt-5-mini' },
+    gemini: { label: 'Google Gemini', model: 'gemini-2.5-flash' },
+    anthropic: { label: 'Anthropic Claude', model: 'claude-sonnet-5-5' },
+  };
+  function aiSettings() { const s = LS.get('ia_ai', {}); return { ...AI_DEFAULTS, ...s, device: { ...AI_DEFAULTS.device, ...(s.device || {}) } }; }
+  function saveAiSettings(s) { LS.set('ia_ai', s); }
+  const aiLive = () => aiSettings().mode === 'live';
+  const deviceCfg = () => { const s = aiSettings(); return s.keyPlace === 'device' && s.device.apiKey ? s.device : null; };
+
+  async function aiCall(task, payload) {
+    const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task, ...payload, device: deviceCfg() }) });
+    let j = null; try { j = await r.json(); } catch { /* not json */ }
+    if (!r.ok || !j?.ok) {
+      if (r.status === 404) throw new Error('AI service not found. Deploy the api folder (Vercel) or run "npm start" locally.');
+      if (r.status === 413) throw new Error('Photos are too large to send. Try fewer photos.');
+      throw new Error(j?.error || `AI request failed (${r.status}).`);
+    }
+    return j;
+  }
+
+  // any photo (URL or data URL) -> compressed JPEG data URL the AI can read
+  function toJpeg(src, max = 1024, q = 0.72) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      if (!String(src).startsWith('data:')) img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+          const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          resolve(c.toDataURL('image/jpeg', q));
+        } catch { reject(new Error('This photo cannot be sent to the AI (its website blocks it). Take it with the camera or upload it.')); }
+      };
+      img.onerror = () => reject(new Error('A photo could not be loaded for the AI.'));
+      img.src = src;
+    });
+  }
+
+  // checklist sent to the AI, with ids c1, c2 ... mapped back to rows
+  function aiChecklist(rec) {
+    const list = [];
+    rec.angles.forEach((a) => a.parts.forEach((p) => list.push({ group: a.name, part: p })));
+    (rec.general_parts || []).forEach((p) => list.push({ group: ANY, part: p }));
+    return list.map((x, i) => { const c = splitCheck(x.part); return { ...x, id: 'c' + (i + 1), name: c.name, rule: c.rule, critical: c.critical }; });
+  }
+
+  function buildAiResult(rec, rows, ai, extra = {}) {
+    const defects = (ai.defects || []).map((d) => ({ angle: d.view || '', description: d.description, severity: d.severity }));
+    const d = decide(rows, defects, rec);
+    return {
+      ...d, checklist: rows,
+      ai: { item_identified: ai.item_identified || rec.typeName, item_matches: ai.item_matches !== false, defects, summary: ai.summary || '', recommendations: ai.recommendations || [] },
+      secondCheck: !!extra.verified, evaluatedAt: new Date().toISOString(), liveStats: extra.liveStats || null,
+      engine: extra.info ? `${extra.info.label}${extra.info.model ? ' · ' + extra.info.model : ''}` : '', demo: false,
+    };
+  }
+
+  // ---------- photo by photo: send every photo once, get the full checklist back ----------
+  async function evaluateWithAi(cur) {
+    const views = cur.angles.filter((a) => cur.shots[a.name]);
+    const photos = [];
+    for (const a of views) photos.push({ view: a.name, image: await toJpeg(cur.shots[a.name].src) });
+    const list = aiChecklist(cur);
+    const overlay = analyseStart(Object.values(cur.shots)[0]?.src, [`Sending ${photos.length} photo${photos.length === 1 ? '' : 's'} to the AI`, `Checking ${list.length} points`, aiSettings().verify ? 'Second check of every OK' : 'Reading the answer', 'Building the result']);
+    try {
+      const j = await aiCall('evaluate', {
+        item: cur.typeName, description: cur.description, assetId: cur.asset.id, location: cur.asset.location, verify: aiSettings().verify,
+        photos, checks: list.map((c) => ({ id: c.id, view: c.group, name: c.name, rule: c.rule, critical: c.critical })),
+      });
+      const res = j.result;
+      const byId = new Map(res.checks.map((c) => [c.id, c]));
+      const rows = list.map((c) => {
+        const r = byId.get(c.id) || { status: 'unclear', evidence: 'Not assessed' };
+        const photoView = r.photo ? photos[r.photo - 1]?.view : null;
+        const row = { id: uid(), group: c.group, part: c.part, critical: c.critical, status: r.status, note: r.evidence, box: photoView ? r.box : null };
+        if (c.group !== ANY && !cur.shots[c.group]) Object.assign(row, { status: 'missing', note: 'This view was not photographed', box: null });
+        if (photoView && photoView !== c.group) row.foundIn = photoView;
+        if (c.group === ANY) row.foundIn = photoView || views[0]?.name || '';
+        return row;
+      });
+      const ai = { ...res, defects: res.defects.map((d) => ({ ...d, view: d.photo ? photos[d.photo - 1]?.view : '' })) };
+      if (res.item_matches === false) ai.summary = `The photos do not look like a ${cur.typeName.toLowerCase()} (AI saw: ${res.item_identified}). ${ai.summary}`;
+      await overlay.finish();
+      return buildAiResult(cur, rows, ai, { verified: j.verified, info: j.info });
+    } catch (e) { overlay.cancel(); throw e; }
+  }
+
+  // analysing overlay that waits for the real answer
+  function analyseStart(photoSrc, steps) {
+    const el = document.createElement('div');
+    el.className = 'analyse';
+    el.innerHTML = `<div class="analyse-box">${photoSrc ? `<div class="analyse-photo"><img src="${esc(photoSrc)}" alt="" /></div>` : ''}
+      <h3>AI is checking every point</h3><ul class="steps">${steps.map((s) => `<li><i></i>${esc(s)}</li>`).join('')}</ul><p class="analyse-note">Usually 10–40 seconds.</p></div>`;
+    document.body.appendChild(el);
+    const lis = $$('.steps li', el);
+    let i = 0;
+    const step = () => { if (i > 0) { lis[i - 1].classList.remove('doing'); lis[i - 1].classList.add('done'); $('i', lis[i - 1]).textContent = '✓'; } if (i < lis.length - 1) { lis[i].classList.add('doing'); i++; } };
+    step();
+    const timer = setInterval(step, 5000);
+    return {
+      async finish() { clearInterval(timer); lis.forEach((li) => { li.classList.remove('doing'); li.classList.add('done'); $('i', li).textContent = '✓'; }); await sleep(450); el.remove(); },
+      cancel() { clearInterval(timer); el.remove(); },
+    };
+  }
+
+  // ---------- real live scan: camera frames analysed every few seconds ----------
+  const RL = { on: false, busy: false, stream: null, raf: 0, paused: false, hits: {}, decided: new Map(), list: [], frames: 0, frameNo: 0, startedAt: 0, view: '', pinnedAt: 0, last: null, lastAt: 0, shots: {}, demoImgs: {}, source: 'camera', loopTimer: 0, defects: [], err: 0 };
+  const lvVideo = document.createElement('video'); lvVideo.playsInline = true; lvVideo.muted = true;
+
+  async function startLiveAi() {
+    const rec = state.cur;
+    rec.mode = 'live';
+    Object.assign(RL, { on: true, busy: false, paused: false, hits: {}, decided: new Map(), list: aiChecklist(rec), frames: 0, frameNo: 0, startedAt: Date.now(), view: rec.angles[0]?.name || '', pinnedAt: 0, last: null, lastAt: 0, shots: {}, defects: [], err: 0 });
+    $('#lvItem').textContent = `${rec.typeName} ${rec.asset.id}`;
+    $('#lvDone').hidden = true; $('#lvDefects').hidden = true; $('#lvDefectList').innerHTML = '';
+    $('#lvSpeed').textContent = 'AI'; $('#lvSkip').textContent = 'Next view';
+    paintPauseAi();
+    show('live');
+    renderLiveAiList();
+    $('#lvStats').textContent = 'Starting camera…';
+    RL.source = 'camera';
+    try { RL.stream = await openDeviceCamera(lvVideo); }
+    catch {
+      RL.source = 'demo';
+      toast('No camera here, so the AI is checking the sample photos instead.', false);
+      for (const a of rec.angles) { try { RL.demoImgs[a.name] = await demoImageFor(rec, a.name); } catch { /* skip */ } }
+    }
+    if (state.view !== 'live' || !RL.on) return;
+    setLiveHint('Point the camera at the ' + RL.view.toLowerCase());
+    cancelAnimationFrame(RL.raf);
+    RL.raf = requestAnimationFrame(liveAiTick);
+    scheduleFrame(800);
+  }
+  function stopLiveAi() { RL.on = false; cancelAnimationFrame(RL.raf); clearTimeout(RL.loopTimer); stopStream(RL.stream); RL.stream = null; }
+  leaveHooks.push((from) => { if (from === 'live' && RL.on) stopLiveAi(); });
+
+  function frameSource() {
+    if (RL.source === 'camera' && lvVideo.videoWidth) return lvVideo;
+    return RL.demoImgs[RL.view]?.img || null;
+  }
+  function liveAiTick(now) {
+    if (!RL.on || state.view !== 'live') return;
+    const { w, h, dpr } = fitCanvas(lvCanvas);
+    const ctx = lvCanvas.getContext('2d');
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);
+    const src = frameSource();
+    const t = now / 1000;
+    const fit = src ? drawCover(ctx, src, w, h, RL.source === 'demo' ? 1.12 : 1, RL.source === 'demo' ? 0.5 + Math.sin(t * 0.5) * 0.06 : 0.5, 0.5) : null;
+    // boxes from the latest AI answer (shown for 4 s)
+    if (fit && RL.last && now - RL.lastAt < 4000) {
+      const a = Math.max(0, 1 - (now - RL.lastAt) / 4000);
+      RL.last.checks.forEach((c) => {
+        if (!c.box) return;
+        const row = RL.list.find((x) => x.id === c.id);
+        const [x, y, bw, bh] = fit.map(c.box);
+        drawDetection(ctx, x, y, bw, bh, { status: c.status, part: row?.part || c.id }, a, dpr, null);
+      });
+    }
+    if (RL.busy && !RL.paused) {
+      const y = ((now % 1800) / 1800) * h;
+      ctx.fillStyle = 'rgba(134,188,37,.75)'; ctx.fillRect(0, y, w, 1.5 * dpr);
+    }
+    const done = RL.decided.size, total = RL.list.length;
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    $('#lvRingFg').style.strokeDashoffset = String(97.4 * (1 - pct / 100));
+    $('#lvPct').textContent = `${done}/${total}`;
+    $('#lvStats').textContent = `${done} of ${total} checks · ${RL.frames} frames · ${Math.round((Date.now() - RL.startedAt) / 1000)} s`;
+    $('#lvView').textContent = RL.view + (Date.now() - RL.pinnedAt < 20000 ? '' : ' · auto');
+    RL.raf = requestAnimationFrame(liveAiTick);
+  }
+  function grabFrame() {
+    const src = frameSource();
+    if (!src) return null;
+    const sw = src.videoWidth || src.naturalWidth, sh = src.videoHeight || src.naturalHeight;
+    const s = Math.min(1, 768 / Math.max(sw, sh));
+    const c = document.createElement('canvas'); c.width = Math.round(sw * s); c.height = Math.round(sh * s);
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    try { return c.toDataURL('image/jpeg', 0.66); } catch { return null; }
+  }
+  function scheduleFrame(ms) { clearTimeout(RL.loopTimer); RL.loopTimer = setTimeout(sendFrame, ms); }
+  async function sendFrame() {
+    if (!RL.on || state.view !== 'live') return;
+    if (RL.paused || RL.busy) return scheduleFrame(1000);
+    const open = RL.list.filter((c) => !RL.decided.has(c.id));
+    if (!open.length) return completeLiveAi();
+    const image = grabFrame();
+    if (!image) { setLiveHint('Camera frame not ready…'); return scheduleFrame(1200); }
+    const rec = state.cur;
+    const frameId = ++RL.frameNo;
+    const view = RL.view;
+    RL.busy = true;
+    try {
+      const j = await aiCall('frame', { image, item: rec.typeName, assetId: rec.asset.id, views: rec.angles.map((a) => a.name), view, checks: open.map((c) => ({ id: c.id, name: c.name, rule: c.rule, critical: c.critical })) });
+      RL.err = 0; RL.frames++;
+      const r = j.result;
+      RL.last = r; RL.lastAt = performance.now();
+      if (r.hint) setLiveHint(r.frame_ok === false ? 'Hold steady, more light' : r.hint);
+      // follow the AI's view guess unless the inspector picked a view in the last 20 s
+      if (r.view_guess && rec.angles.some((a) => a.name === r.view_guess) && Date.now() - RL.pinnedAt > 20000) RL.view = r.view_guess;
+      r.checks.forEach((c) => {
+        const hh = RL.hits[c.id] || (RL.hits[c.id] = { present: 0, missing: 0 });
+        hh[c.status]++; hh.evidence = c.evidence; hh.box = c.box; hh.frameId = frameId; hh.view = view; hh.image = image;
+        if (hh[c.status] >= 2 && !RL.decided.has(c.id)) decideLive(c.id, c.status, hh);
+      });
+      r.defects.forEach((d) => {
+        if (RL.defects.some((x) => x.description === d.description)) return;
+        RL.defects.push({ ...d, view });
+        $('#lvDefects').hidden = false;
+        $('#lvDefectList').insertAdjacentHTML('beforeend', `<li><b>${esc(cap(d.severity))}:</b> ${esc(d.description)}</li>`);
+      });
+      renderLiveAiList();
+    } catch (e) {
+      RL.err++;
+      setLiveHint('AI not reachable – retrying');
+      if (RL.err === 1 || RL.err % 5 === 0) toast(e.message, true);
+      if (RL.err >= 8) { toast('Live AI stopped after repeated errors. Finish to see what was checked.', true); RL.paused = true; paintPauseAi(); }
+    } finally { RL.busy = false; }
+    if (RL.decided.size === RL.list.length) return completeLiveAi();
+    scheduleFrame(Math.max(1500, aiSettings().frameSec * 1000));
+  }
+  function decideLive(id, status, hh) {
+    const c = RL.list.find((x) => x.id === id);
+    RL.decided.set(id, { status, evidence: hh.evidence, box: hh.box, view: hh.view, frameId: hh.frameId });
+    // the frame that proved a check becomes the evidence photo of that view
+    if (!RL.shots[hh.view]) RL.shots[hh.view] = { src: hh.image, frameId: hh.frameId, ts: new Date().toISOString() };
+    navigator.vibrate?.(status === 'missing' ? [40, 40, 40] : 18);
+    void c;
+  }
+  function renderLiveAiList() {
+    const rec = state.cur;
+    const groups = [...rec.angles.map((a) => a.name), ANY];
+    $('#lvNext').textContent = RL.decided.size === RL.list.length ? 'All checks done.' : `Show the ${RL.view.toLowerCase()}. A check is confirmed after the AI sees it twice.`;
+    $('#lvList').innerHTML = groups.map((g) => {
+      const rows = RL.list.filter((r) => r.group === g);
+      if (!rows.length) return '';
+      const n = rows.filter((r) => RL.decided.has(r.id)).length;
+      return `<div class="lv-group"><h4><span>${esc(g)}</span><span>${n}/${rows.length}</span></h4><ul>${rows.map((r) => {
+        const d = RL.decided.get(r.id); const hh = RL.hits[r.id];
+        const st = d ? d.status : hh ? 'active' : '';
+        const icon = st === 'present' ? '✓' : st === 'missing' ? '✕' : hh ? '1' : '';
+        return `<li class="${st}"><i>${icon}</i><span>${esc(r.name)}</span>${!d && hh ? '<small>seen once</small>' : ''}</li>`;
+      }).join('')}</ul></div>`;
+    }).join('');
+  }
+  function paintPauseAi() { $('#lvPause').innerHTML = `<svg><use href="#${RL.paused ? 'i-play' : 'i-pause'}"/></svg>`; $('#lvState').textContent = RL.paused ? 'Paused' : 'AI scanning'; $('#lvState').classList.toggle('scan', !RL.paused); }
+  function completeLiveAi() {
+    if (!RL.on) return;
+    $('#lvDone').hidden = false; setLiveHint('');
+    setTimeout(() => { if (state.view === 'live' && RL.on) finishLiveAi(false); }, 1200);
+  }
+  async function finishLiveAi(early) {
+    const rec = state.cur;
+    if (!rec || rec.result) return;
+    const open = RL.list.filter((c) => !RL.decided.has(c.id)).length;
+    if (early && open && !confirm(`${open} check${open > 1 ? 's were' : ' was'} not confirmed yet and will be marked Unclear. Finish anyway?`)) return;
+    const info = { label: PROVIDER_INFO[deviceCfg()?.provider]?.label || 'AI', model: '' };
+    stopLiveAi();
+    Object.entries(RL.shots).forEach(([v, s]) => { rec.shots[v] = { src: s.src, ts: s.ts, quality: { ok: true }, frameId: s.frameId }; });
+    const rows = RL.list.map((c) => {
+      const d = RL.decided.get(c.id); const hh = RL.hits[c.id];
+      const row = { id: uid(), group: c.group, part: c.part, critical: c.critical, status: 'unclear', note: 'Not seen during the live scan', box: null };
+      if (d) {
+        Object.assign(row, { status: d.status, note: d.evidence + (d.status === 'present' ? ' · seen in 2 frames' : '') });
+        if (d.view !== c.group || c.group === ANY) row.foundIn = d.view;
+        if (rec.shots[d.view]?.frameId === d.frameId) row.box = d.box;
+      } else if (hh) row.note = `Seen once (${hh.present ? 'looked OK' : 'looked Not OK'}): ${hh.evidence || ''} – not confirmed`;
+      return row;
+    });
+    const ai = { defects: RL.defects.map((d) => ({ view: d.view, description: d.description, severity: d.severity })), summary: liveSummary(rows), recommendations: [] };
+    rec.result = buildAiResult(rec, rows, ai, { liveStats: { frames: RL.frames, seconds: Math.round((Date.now() - RL.startedAt) / 1000) }, info });
+    rec.result.engine = 'Live AI scan';
+    track('inspection_complete', { mode: 'live-ai', tag: rec.asset?.id, result: TAG_LABEL[resultTag(rec)] });
+    rec.saved = false;
+    renderResult();
+    show('result');
+  }
+  function liveSummary(rows) {
+    const bad = rows.filter((r) => r.status === 'missing').map((r) => splitCheck(r.part).name);
+    const unc = rows.filter((r) => r.status === 'unclear').length;
+    if (!bad.length && !unc) return 'Every check was seen and confirmed during the live scan.';
+    return [bad.length ? `Not OK: ${bad.join(', ')}.` : '', unc ? `${unc} check${unc > 1 ? 's' : ''} could not be confirmed on camera – take a photo of those points.` : ''].filter(Boolean).join(' ');
+  }
+
+  // ---------- real location of the device ----------
+  async function captureLocation(rec) {
+    if (!aiSettings().gps || !navigator.geolocation) return;
+    const pos = await new Promise((resolve) => navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }));
+    if (!pos) { toast('Location not available. Allow location for this site to add GPS to the report.', true); return; }
+    rec.meta.gps = { lat: +pos.coords.latitude.toFixed(6), lng: +pos.coords.longitude.toFixed(6), acc: Math.round(pos.coords.accuracy || 0), at: new Date().toISOString() };
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&lat=${rec.meta.gps.lat}&lon=${rec.meta.gps.lng}`, { headers: { 'Accept-Language': 'en' } });
+      const j = await r.json();
+      if (j?.display_name) rec.meta.gps.address = j.display_name.split(',').slice(0, 5).join(',').trim();
+    } catch { /* address is optional */ }
+    if (state.view === 'capture') paintGpsChip();
+  }
+  function paintGpsChip() {
+    const g = state.cur?.meta?.gps;
+    const el = $('#capGps');
+    if (el) { el.hidden = !g; if (g) el.textContent = `📍 ${g.address ? g.address.split(',')[0] : `${g.lat}, ${g.lng}`}`; }
+  }
+  const gpsText = (g) => (g ? `${g.address ? g.address + ' · ' : ''}${g.lat}, ${g.lng}${g.acc ? ` (±${g.acc} m)` : ''}` : '');
+  const mapsLink = (g) => `https://www.google.com/maps?q=${g.lat},${g.lng}`;
+
+  // ---------- edit a checklist line after the AI (status, criticality, note) ----------
+  const SEVS = { critical: 'Critical', major: 'Major', minor: 'Minor' };
+  const sevOf = (c) => c.severity || (c.critical ? 'critical' : 'major');
+  function recompute(rec) {
+    const d = decide(rec.result.checklist, rec.result.ai?.defects || [], rec);
+    Object.assign(rec.result, d);
+    rec.saved = false;
+  }
+  function openRowEditor(rowId) {
+    const rec = state.cur;
+    const c = rec?.result?.checklist.find((x) => x.id === rowId);
+    if (!c) return;
+    const sc = splitCheck(c.part);
+    openModal(`
+      <div class="modal-head"><div><h2>${esc(sc.name)}</h2><p>${esc(c.group === ANY ? c.foundIn || 'Any view' : c.group)}${sc.rule ? ' · must be: ' + esc(sc.rule) : ''}</p></div><button type="button" class="icon-btn" data-close aria-label="Close"><svg><use href="#i-close"/></svg></button></div>
+      <form id="rowForm">
+        <div class="field"><span>Result</span><div class="seg seg-status" id="reStatus">${['present', 'missing', 'unclear'].map((s) => `<button type="button" data-v="${s}" class="${c.status === s ? 'on' : ''}">${STATUS_TEXT[s]}</button>`).join('')}</div></div>
+        <div class="field"><span>Criticality</span><div class="seg seg-sev" id="reSev">${Object.entries(SEVS).map(([k, v]) => `<button type="button" data-v="${k}" class="${sevOf(c) === k ? 'on' : ''}">${v}</button>`).join('')}</div></div>
+        <label class="field"><span>Notes</span><textarea id="reNote" rows="4" maxlength="600">${esc(c.note || '')}</textarea></label>
+        ${c.aiNote && c.aiNote !== c.note ? `<p class="muted">AI wrote: “${esc(c.aiNote)}”</p>` : ''}
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-hivis btn-block">Save changes</button>
+          <div class="two"><button type="button" class="btn btn-line" id="reClear">Delete note</button>${c.aiNote && c.aiNote !== c.note ? '<button type="button" class="btn btn-line" id="reRestore">Restore AI note</button>' : '<button type="button" class="btn btn-line" data-close>Cancel</button>'}</div>
+        </div>
+      </form>`, (m) => {
+      let st = c.status, sev = sevOf(c);
+      $$('#reStatus button', m).forEach((b) => b.addEventListener('click', () => { st = b.dataset.v; $$('#reStatus button', m).forEach((x) => x.classList.toggle('on', x === b)); }));
+      $$('#reSev button', m).forEach((b) => b.addEventListener('click', () => { sev = b.dataset.v; $$('#reSev button', m).forEach((x) => x.classList.toggle('on', x === b)); }));
+      $('#reClear', m).addEventListener('click', () => { $('#reNote', m).value = ''; $('#reNote', m).focus(); });
+      $('#reRestore', m)?.addEventListener('click', () => { $('#reNote', m).value = c.aiNote; });
+      $('#rowForm', m).addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (c.aiNote === undefined) c.aiNote = c.note || '';
+        if (c.aiStatus === undefined) { c.aiStatus = c.status; c.aiSeverity = sevOf(c); }
+        const note = $('#reNote', m).value.trim();
+        const changed = note !== (c.note || '') || st !== c.status || sev !== sevOf(c);
+        Object.assign(c, { note, status: st, severity: sev, critical: sev === 'critical' });
+        c.edited = c.note !== c.aiNote || c.status !== c.aiStatus || sev !== c.aiSeverity;
+        recompute(rec);
+        closeModal(); renderResult();
+        if (changed) { toast('Check updated'); track('check_edited', { tag: rec.asset?.id, check: sc.name, status: st, severity: sev }); }
+      });
+    });
+  }
+
+  // ======================= ROLES =======================
+  const ROLES = ['Admin', 'Safety manager', 'Scaffolding inspector', 'Safety team'];
+  state.role = ROLES.includes(LS.get('ia_role', '')) ? LS.get('ia_role', '') : 'Admin';
+  function setRole(r) {
+    if (!ROLES.includes(r)) return;
+    state.role = r; LS.set('ia_role', r);
+    state.profile.role = r; LS.set('ia_profile', state.profile);
+    paintProfile(); track('role_changed', { role: r });
+    window.dispatchEvent(new CustomEvent('ia:role', { detail: r }));
+  }
+
+  // ======================= SETTINGS: AI ENGINE (Admin) =======================
+  let serverAi = null;
+  async function loadServerAi() {
+    try { const r = await fetch('/api/ai-config'); serverAi = r.ok ? await r.json() : { ok: false, offline: true }; }
+    catch { serverAi = { ok: false, offline: true }; }
+    if (state.view === 'settings') paintAi();
+  }
+  function paintAi() {
+    const s = aiSettings();
+    const isAdmin = state.role === 'Admin';
+    $('#aiCard').hidden = false;
+    $('#aiAdminOnly').hidden = !isAdmin;
+    $('#aiNotAdmin').hidden = isAdmin;
+    $$('#aiModeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === s.mode));
+    $$('#aiPlaceSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === s.keyPlace));
+    $('#aiProvider').value = s.device.provider;
+    paintAiFields();
+    $('#aiVerify').checked = s.verify; $('#aiGps').checked = s.gps; $('#aiFrameSec').value = String(s.frameSec);
+    $('#aiAdminKeyRow').hidden = s.keyPlace !== 'server';
+    // status line
+    const st = $('#aiStatus');
+    const dev = deviceCfg();
+    let html;
+    if (s.mode === 'demo') html = '<b>Demo mode</b> – results are pre-recorded. Switch to Live AI to use your key.';
+    else if (s.keyPlace === 'device') html = dev ? `<b>Live AI</b> on this device: ${esc(PROVIDER_INFO[dev.provider].label)} · key ••••${esc(dev.apiKey.slice(-4))}` : '<b>Live AI</b> – enter a key below and press Save.';
+    else if (!serverAi) html = 'Checking the server…';
+    else if (serverAi.offline) html = '⚠ The AI service (/api) is not reachable. Deploy the <code>api</code> folder on Vercel, or run <code>npm start</code>.';
+    else if (serverAi.server) html = `<b>Live AI</b> using the server key: ${esc(serverAi.server.label)} · ${esc(serverAi.server.model || '')} · key ${esc(serverAi.server.keyHint)}${serverAi.server.savedBy ? ` · saved by ${esc(serverAi.server.savedBy)}` : ''}`;
+    else if (serverAi.env) html = `<b>Live AI</b> using Vercel environment variables: ${esc(serverAi.env.label)} · ${esc(serverAi.env.model || '')} · key ${esc(serverAi.env.keyHint)}`;
+    else html = `⚠ No AI key on the server yet.${serverAi.canStore ? ' Enter one below with the admin key.' : ' Server storage needs Upstash Redis + ADMIN_KEY in Vercel, or use "This device only".'}`;
+    st.innerHTML = html;
+    st.className = 'ai-status ' + (s.mode === 'live' && /⚠/.test(html) ? 'warn' : s.mode === 'live' ? 'ok' : '');
+  }
+  function paintAiFields() {
+    const p = $('#aiProvider').value;
+    const d = aiSettings().device;
+    const same = d.provider === p;
+    $('#aiAzureFields').hidden = p !== 'azure';
+    $('#aiModelRow').hidden = p === 'azure';
+    $('#aiModel').placeholder = PROVIDER_INFO[p].model || '';
+    $('#aiModel').value = same ? d.model : '';
+    $('#aiEndpoint').value = same ? d.endpoint : '';
+    $('#aiDeployment').value = same ? d.deployment : '';
+    $('#aiApiVersion').value = (same && d.apiVersion) || '2024-10-21';
+    $('#aiKey').value = '';
+    $('#aiKey').placeholder = same && d.apiKey && aiSettings().keyPlace === 'device' ? `saved ••••${d.apiKey.slice(-4)} – leave empty to keep` : { azure: 'Azure OpenAI key', openai: 'sk-…', gemini: 'AIza…', anthropic: 'sk-ant-…' }[p];
+    $('#aiKeyHelp').innerHTML = {
+      azure: 'Azure portal → your Azure OpenAI resource → <b>Keys and Endpoint</b>. Use a vision deployment such as gpt-4o or gpt-4.1.',
+      openai: 'platform.openai.com → <b>API keys</b>.',
+      gemini: 'aistudio.google.com → <b>Get API key</b>.',
+      anthropic: 'console.anthropic.com → <b>API keys</b>.',
+    }[p];
+  }
+  function readAiForm() {
+    const s = aiSettings();
+    const p = $('#aiProvider').value;
+    const old = s.device.provider === p ? s.device : {};
+    return { provider: p, apiKey: $('#aiKey').value.trim() || (s.keyPlace === 'device' ? old.apiKey || '' : ''), model: $('#aiModel').value.trim(), endpoint: $('#aiEndpoint').value.trim().replace(/\/+$/, ''), deployment: $('#aiDeployment').value.trim(), apiVersion: $('#aiApiVersion').value.trim() || '2024-10-21' };
+  }
+  $$('#aiModeSeg button').forEach((b) => b.addEventListener('click', () => { const s = aiSettings(); s.mode = b.dataset.v; saveAiSettings(s); paintAi(); track('ai_mode', { mode: s.mode }); toast(s.mode === 'live' ? 'Live AI is on – inspections use the real AI' : 'Demo mode – pre-recorded results'); }));
+  $$('#aiPlaceSeg button').forEach((b) => b.addEventListener('click', () => { const s = aiSettings(); s.keyPlace = b.dataset.v; saveAiSettings(s); paintAi(); }));
+  $('#aiProvider').addEventListener('change', paintAiFields);
+  ['#aiVerify', '#aiGps'].forEach((id) => $(id).addEventListener('change', () => { const s = aiSettings(); s.verify = $('#aiVerify').checked; s.gps = $('#aiGps').checked; saveAiSettings(s); }));
+  $('#aiFrameSec').addEventListener('change', () => { const s = aiSettings(); s.frameSec = +$('#aiFrameSec').value; saveAiSettings(s); });
+  $('#aiSave').addEventListener('click', async () => {
+    const s = aiSettings();
+    const cfg = readAiForm();
+    if (cfg.provider === 'azure' && (!/^https:\/\//.test(cfg.endpoint) || !cfg.deployment)) return toast('Enter the Azure endpoint (https://…) and the deployment name.', true);
+    if (s.keyPlace === 'device') {
+      if (!cfg.apiKey) return toast('Enter the API key.', true);
+      s.device = cfg; saveAiSettings(s); paintAi(); toast('Saved on this device'); track('ai_key_saved', { place: 'device', provider: cfg.provider });
+      return;
+    }
+    const adminKey = $('#aiAdminKey').value;
+    if (!adminKey) return toast('Enter the admin key (ADMIN_KEY in Vercel) to save on the server.', true);
+    const btn = $('#aiSave'); btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/ai-config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adminKey, config: cfg, savedBy: state.user?.email || state.profile.name || '' }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || `Save failed (${r.status})`);
+      s.device = { ...cfg, apiKey: '' }; saveAiSettings(s);
+      $('#aiAdminKey').value = ''; toast('Saved on the server for all users'); track('ai_key_saved', { place: 'server', provider: cfg.provider });
+      await loadServerAi();
+    } catch (e) { toast(e.message, true); }
+    finally { btn.disabled = false; btn.textContent = 'Save'; }
+  });
+  $('#aiTest').addEventListener('click', async () => {
+    const s = aiSettings();
+    const typed = readAiForm();
+    const btn = $('#aiTest'); btn.disabled = true; btn.textContent = 'Testing…';
+    try {
+      const device = s.keyPlace === 'device' ? (typed.apiKey ? typed : deviceCfg()) : (typed.apiKey ? typed : null);
+      const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task: 'test', device }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || `Test failed (${r.status})`);
+      toast(`✓ Connected: ${j.info.label}${j.info.model ? ' · ' + j.info.model : ''} (${(j.ms / 1000).toFixed(1)} s)`);
+    } catch (e) { toast(e.message, true); }
+    finally { btn.disabled = false; btn.textContent = 'Test connection'; }
+  });
+  $('#aiRemove').addEventListener('click', async () => {
+    const s = aiSettings();
+    if (s.keyPlace === 'device') { if (!confirm('Remove the key saved on this device?')) return; s.device.apiKey = ''; saveAiSettings(s); paintAi(); toast('Key removed from this device'); return; }
+    const adminKey = $('#aiAdminKey').value || prompt('Admin key:');
+    if (!adminKey) return;
+    const r = await fetch('/api/ai-config', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adminKey }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) return toast(j.error || 'Could not remove', true);
+    toast('Server key removed'); loadServerAi();
+  });
+  $('#pfRole').addEventListener('change', () => setRole($('#pfRole').value));
+  $('#sfGps')?.addEventListener('change', () => { const s = aiSettings(); s.gps = $('#sfGps').checked; saveAiSettings(s); });
+
+  // ======================= WORKSPACE MODULES (dashboard, projects, alerts) =======================
+  const API = {
+    $, $$, esc, uid, clone, LS, sleep, fmtDate, fmtDay, ago, toast, show, RENDER, openModal, closeModal, track, state,
+    ROLES, setRole, getAsset, getType, saveAssets, resultTag, TAG_LABEL, dueInfo, rowHtml, wireRows, openHistory, openTagDetail,
+    aiLive, aiSettings, PROVIDER_INFO, M, initialsOf,
+  };
+  (window.IAX || []).forEach((fn) => { try { fn(API); } catch (e) { console.error('module failed', e); } });
 
   // clear a red field as soon as the user edits it
   document.addEventListener('input', (e) => { if (e.target.classList?.contains('invalid')) e.target.classList.remove('invalid'); });
