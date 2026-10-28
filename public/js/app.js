@@ -52,9 +52,16 @@
   const ANY = 'Any view';
   // evidence outline: [x, y, w, h] rectangle or { poly: [[x, y], ...] }, all as fractions of the photo
   const bboxOf = (b) => {
-    if (!b) return null;
-    if (Array.isArray(b)) return b;
-    const xs = b.poly.map((p) => p[0]), ys = b.poly.map((p) => p[1]);
+    if (Array.isArray(b) && b.length === 4 && b.every((v) => Number.isFinite(Number(v)))) {
+      let [x, y, w, h] = b.map(Number);
+      // Defensive clamp: malformed model coordinates must never push overlays outside the photo.
+      x = Math.max(0, Math.min(1, x)); y = Math.max(0, Math.min(1, y));
+      w = Math.max(0, Math.min(1 - x, w)); h = Math.max(0, Math.min(1 - y, h));
+      return w > 0 && h > 0 ? [x, y, w, h] : null;
+    }
+    if (!b || !Array.isArray(b.poly) || b.poly.length < 3 || !b.poly.every((p) => Array.isArray(p) && p.length >= 2 && p.every((v) => Number.isFinite(Number(v))))) return null;
+    const xs = b.poly.map((p) => Math.max(0, Math.min(1, Number(p[0]))));
+    const ys = b.poly.map((p) => Math.max(0, Math.min(1, Number(p[1]))));
     return [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
   };
   // the photo (view) a check's evidence is shown on
@@ -1408,13 +1415,20 @@
     // real-AI boxes were found on this exact photo, so they always show (unless switched off for live scans)
     const realAi = rec.result?.demo === false;
     const hideLive = realAi && rec.mode === 'live' && !aiSettings().boxes;
-    const boxes = hideLive || (shot.custom && !realAi) ? [] : boxesFor(rec, group);
+    const checklistBoxes = hideLive || (shot.custom && !realAi) ? [] : boxesFor(rec, group);
+    // Defect boxes were previously dropped when building the result, so genuine AI hazards
+    // appeared in the list but had no red rectangle on the evidence photo.
+    const defectBoxes = hideLive || !realAi ? [] : (rec.result?.ai?.defects || [])
+      .filter((d) => d.box && d.angle === group)
+      .map((d) => ({ id: `defect-${d.description}`, part: `AI defect: ${d.description}`, status: 'missing', box: d.box, isDefect: true }));
+    const boxes = [...checklistBoxes, ...defectBoxes].filter((c) => bboxOf(c.box));
     return `<div class="anno" ${zoomable ? `data-zoom="${esc(group)}"` : ''}><img src="${esc(shot.src)}" ${shot.key ? `data-key="${esc(shot.key)}"` : ''} alt="${esc(group)} photo" />
-      ${boxes.map((c) => { const b = bboxOf(c.box); const lbl = `<em>${ICON[c.status]} ${esc(splitCheck(c.part).name)}</em>`;
-        return Array.isArray(c.box)
-          ? `<span class="bx ${c.status} ${b[1] < 0.09 ? 'low' : ''}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%">${lbl}</span>`
-          : `<span class="bx poly ${c.status} ${b[1] < 0.09 ? 'low' : ''}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%">${lbl}</span>`; }).join('')}
-      ${boxes.some((c) => !Array.isArray(c.box)) ? `<svg class="polys" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${boxes.filter((c) => !Array.isArray(c.box)).map((c) => `<polygon class="${c.status}" points="${c.box.poly.map((p) => `${p[0] * 100},${p[1] * 100}`).join(' ')}" />`).join('')}</svg>` : ''}
+      ${boxes.map((c) => { const b = bboxOf(c.box); const label = c.isDefect ? c.part : splitCheck(c.part).name; const lbl = `<em>${c.status === 'present' ? ICON.present : c.status === 'unclear' ? ICON.unclear : ICON.missing} ${esc(label)}</em>`;
+        if (!b) return '';
+        if (Array.isArray(c.box)) return `<span class="bx ${c.status} ${b[1] < 0.09 ? 'low' : ''}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%">${lbl}</span>`;
+        return `<span class="bx poly ${c.status} ${b[1] < 0.09 ? 'low' : ''}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%">${lbl}</span>`;
+      }).join('')}
+      ${boxes.some((c) => !Array.isArray(c.box)) ? `<svg class="polys" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${boxes.filter((c) => !Array.isArray(c.box) && c.box?.poly).map((c) => `<polygon class="${c.status}" points="${c.box.poly.map((p) => `${Math.max(0, Math.min(1, p[0])) * 100},${Math.max(0, Math.min(1, p[1])) * 100}`).join(' ')}" />`).join('')}</svg>` : ''}
       <div class="wm">${esc(wmText(rec, group, shot.ts))}</div></div>`;
   }
   function partRow(c) {
@@ -1828,7 +1842,7 @@
   }
 
   function buildAiResult(rec, rows, ai, extra = {}) {
-    const defects = (ai.defects || []).map((d) => ({ angle: d.view || '', description: d.description, severity: d.severity }));
+    const defects = (ai.defects || []).map((d) => ({ angle: d.view || '', description: d.description, severity: d.severity, box: bboxOf(d.box), photo: d.photo || null }));
     const d = decide(rows, defects, rec);
     return {
       ...d, checklist: rows,

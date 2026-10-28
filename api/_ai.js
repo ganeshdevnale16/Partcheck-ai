@@ -189,7 +189,7 @@ You assess inspection photos against a checklist. Be strict and evidence based:
 - "missing" (Not OK) when the photo clearly shows it is not met, or the item is absent where it should be visible.
 - "unclear" when it cannot be judged from the photos (hidden, out of frame, blurry, too dark).
 Never guess. Use short, plain-English evidence a site supervisor understands, describing what is actually visible.
-Boxes are [x, y, width, height] as fractions (0 to 1) of the photo they refer to, top-left origin, tight around the evidence. Use null when no single area applies.`;
+For every box, use [x, y, width, height] as NORMALIZED FRACTIONS from 0 to 1 of the exact supplied photo (origin at the top-left; x increases rightward, y downward). The values are not pixels and not 0–1000 coordinates. Carefully locate the visible evidence in the image before estimating the box; make it tight around the actual item/defect, not the whole structure or image. Keep the entire box inside the photo. A box must refer to the photo number returned for that check. For a missing requirement, box the clearly visible mounting/connection/location where the item should be only when that location is actually visible; do not draw a box around empty space or guess. If you cannot locate the evidence accurately, return null rather than an approximate or misleading box. Use null for general findings without one precise visual location.`;
 
 export function evaluatePrompt(p) {
   const photos = p.photos.map((ph, i) => `Photo ${i + 1}: view "${ph.view}"`).join('\n');
@@ -238,7 +238,7 @@ Views of this inspection: ${p.views.join(', ')}. The inspector says they are on:
 Checks still open (id | requirement):
 ${checks}
 
-Judge ONLY checks you can clearly see in THIS frame. Skip anything not visible.
+Judge ONLY checks you can clearly see in THIS frame. Skip anything not visible. Box coordinates must be normalized fractions [x,y,width,height] from 0 to 1 relative to this exact frame, top-left origin (never pixels or 0–1000). Tight, accurate boxes only; use null if you cannot localize the evidence confidently. Never box the whole frame.
 Return JSON:
 {
   "view_guess": "which view this frame shows (one of the list) or \\"\\"",
