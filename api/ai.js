@@ -2,7 +2,7 @@
 // Runs the inspection photos through the configured vision model and returns structured results.
 import {
   resolveConfig, callVision, parseJson, friendlyError, rateLimit, publicInfo,
-  SYSTEM_INSPECTOR, evaluatePrompt, verifyPrompt, framePrompt, suggestPrompt,
+  SYSTEM_INSPECTOR, SYSTEM_CHECKLIST, evaluatePrompt, verifyPrompt, framePrompt, suggestPrompt,
 } from './_ai.js';
 
 const MAX_PHOTOS = 12;
@@ -40,8 +40,27 @@ export default async function handler(req, res) {
     }
 
     if (b.task === 'suggest') {
-      const out = await callVision(cfg, { system: 'You design practical visual inspection checklists for industrial and construction safety.', text: suggestPrompt(clip(b.name, 80), clip(b.description, 300)), maxTokens: 3000, timeoutMs: 45000 });
-      return res.json({ ok: true, result: parseJson(out), info: publicInfo(cfg) });
+      const name = clip(b.name, 120);
+      if (!name) return res.status(400).json({ ok: false, error: 'Enter the inspection name.' });
+      const images = (Array.isArray(b.images) ? b.images : []).filter(okImage).slice(0, 8);
+      const docs = (Array.isArray(b.docs) ? b.docs : []).filter((d) => d && d.mime === 'application/pdf' && typeof d.data === 'string' && d.data.length < 3_600_000).slice(0, 2)
+        .map((d) => ({ mime: 'application/pdf', data: d.data, name: clip(d.name, 120) }));
+      const fileNames = (Array.isArray(b.fileNames) ? b.fileNames : []).slice(0, 10).map((f) => clip(f, 120));
+      const text = suggestPrompt({ name, description: clip(b.description, 2000), documentText: clip(b.documentText, 60000), fileNames, imageCount: images.length, docCount: docs.length });
+      const raw = parseJson(await callVision(cfg, { system: SYSTEM_CHECKLIST, text, images, docs, maxTokens: 6000, timeoutMs: 55000 }));
+      const chk = (c) => ({ name: clip(c?.name, 80).replace(/::|^!/g, ' ').trim(), rule: clip(c?.rule, 300).replace(/::/g, ' ').trim(), critical: !!c?.critical });
+      const angles = (Array.isArray(raw.angles) ? raw.angles : []).slice(0, 8).map((v) => ({
+        name: clip(v?.name, 60).trim(), guidance: clip(v?.guidance, 200).trim(),
+        checks: (Array.isArray(v?.checks) ? v.checks : []).slice(0, 10).map(chk).filter((c) => c.name),
+      })).filter((v) => v.name && v.checks.length);
+      if (!angles.length) return res.status(502).json({ ok: false, error: 'The AI did not return any checks. Add more detail to the description and try again.' });
+      const seen = new Set();
+      angles.forEach((v) => { let n = v.name, k = 2; while (seen.has(n.toLowerCase())) n = `${v.name} ${k++}`; v.name = n; seen.add(n.toLowerCase()); });
+      return res.json({
+        ok: true, info: publicInfo(cfg), ms: Date.now() - started,
+        result: { description: clip(raw.description, 300), idLabel: clip(raw.idLabel, 40), safety: !!raw.safety, basedOn: clip(raw.basedOn, 300),
+          angles, general: (Array.isArray(raw.general) ? raw.general : []).slice(0, 6).map(chk).filter((c) => c.name) },
+      });
     }
 
     if (b.task === 'evaluate') {

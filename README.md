@@ -1,7 +1,25 @@
-# Inspection AI v6.0
+# Inspection AI v6.1
 
 Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
 Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
+
+## What's new in v6.1
+- **AI boxes on live-scan photos** – every OK / Not OK the live AI finds is drawn on the exact frame it was found in,
+  in the result and the PDF. Switch: Settings → AI engine → "Live scan: draw AI boxes…" (on by default).
+  Real-AI photo mode now also shows boxes on photos taken with the device camera or uploaded.
+- **AI checklist for any inspection** – Settings → Inspection types → Create (or "Create custom inspection").
+  Enter a name and description (e.g. "FSSAI kitchen audit") and optionally add files: PDF, Word (.docx), Excel,
+  CSV, text or photos (up to 6). The AI builds views and checks from them and keeps clause numbers from documents.
+  Scanned PDFs are turned into page images in the browser, so they also work with Azure OpenAI.
+
+## What's new in v6.1
+- **Live scan boxes are back** – every frame that proved a check is kept as an evidence photo with the AI's boxes
+  (OK green, Not OK red), on screen and in the PDF. Switch: Settings → AI engine → "Live scan: draw AI boxes".
+- **Create checklist with AI** – builds views and checks for ANY inspection (FSSAI, fire, electrical, forklift, hotel…)
+  from the name, the description and **reference files**: PDF, Word (.docx), Excel, CSV, text or photos (up to 6).
+  PDF/Word/Excel text is read in the browser; scanned PDFs (no text) are sent to the AI as a file
+  (Gemini, OpenAI and Claude read PDFs; for Azure use a PDF with selectable text).
+  Without an AI key a neutral starter template is added instead.
 
 ## What's new in v6.0
 - **Real AI** – photo-by-photo and live camera scan are analysed by your AI provider (Settings → AI engine).

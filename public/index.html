@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=6.0.0" />
+  <link rel="stylesheet" href="styles.css?v=6.1.0" />
 </head>
 <body class="locked">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -199,11 +199,21 @@
     <section class="view" id="view-editor" hidden>
       <h1 class="page-title" id="edTitle">New inspection type</h1>
       <div class="card">
-        <label class="field"><span>Name</span><input id="edName" maxlength="80" placeholder="e.g. Forklift, Ladder, Safety harness" /></label>
-        <label class="field"><span>Description</span><textarea id="edDesc" rows="2" maxlength="400"></textarea></label>
+        <label class="field"><span>Name</span><input id="edName" maxlength="80" placeholder="e.g. FSSAI kitchen audit, Forklift daily check, Fire extinguisher" /></label>
+        <label class="field"><span>Description <small class="muted">– the more detail, the better the AI checklist</small></span><textarea id="edDesc" rows="4" maxlength="2000" placeholder="e.g. Monthly hygiene audit of a hotel kitchen as per FSSAI Schedule 4: storage, cooking area, wash area, staff hygiene, pest control, licence display."></textarea></label>
+        <div class="field">
+          <span>Reference files <small class="muted">– optional: SOP, standard, audit format, old checklist or photos</small></span>
+          <label class="drop" id="edDrop">
+            <input type="file" id="edFiles" multiple accept=".pdf,.docx,.txt,.md,.csv,.xlsx,.xls,.json,image/*" />
+            <svg><use href="#i-upload"/></svg>
+            <span><b>Add files</b> or drop them here<br /><small>PDF, Word (.docx), Excel, CSV, text or photos · up to 6 files</small></span>
+          </label>
+          <ul class="file-list" id="edFileList"></ul>
+        </div>
         <label class="field"><span>Name of the ID field</span><input id="edIdLabel" maxlength="40" placeholder="Asset ID / serial no." /></label>
         <label class="switch"><input type="checkbox" id="edSafety" /><span class="switch-ui" aria-hidden="true"></span><span>Safety wording (Safe to use / Do not use)</span></label>
-        <button type="button" class="btn btn-ai" id="btnSuggest" style="margin-top:.6rem"><svg><use href="#i-spark"/></svg>Suggest views and checks with AI</button>
+        <button type="button" class="btn btn-ai" id="btnSuggest" style="margin-top:.6rem"><svg><use href="#i-spark"/></svg>Create checklist with AI</button>
+        <p class="muted" id="edAiNote" style="margin-top:.5rem">The AI builds views and checks from the name, the description and any files you add. Review them before saving.</p>
       </div>
       <div class="card">
         <h2 class="card-title">Views and checks</h2>
@@ -388,6 +398,7 @@
           <div class="row-btns"><button type="button" class="btn btn-hivis" id="aiSave">Save</button><button type="button" class="btn btn-line" id="aiTest">Test connection</button><button type="button" class="btn btn-danger" id="aiRemove">Remove key</button></div>
           <div class="ai-opts">
             <label class="switch"><input type="checkbox" id="aiVerify" /><span class="switch-ui" aria-hidden="true"></span><span>Double-check every OK with a second AI pass <small class="muted">(more accurate, about 2× the AI cost)</small></span></label>
+            <label class="switch"><input type="checkbox" id="aiBoxes" /><span class="switch-ui" aria-hidden="true"></span><span>Live scan: draw AI boxes on the camera and on report photos <small class="muted">(OK green, Not OK red)</small></span></label>
             <label class="switch"><input type="checkbox" id="aiGps" /><span class="switch-ui" aria-hidden="true"></span><span>Record the device location (GPS) on every inspection</span></label>
             <label class="field" style="max-width:260px;margin-top:.5rem"><span>Live scan: send a frame every</span><select id="aiFrameSec"><option value="2">2 seconds</option><option value="3">3 seconds</option><option value="5">5 seconds</option></select></label>
           </div>
@@ -441,10 +452,10 @@
   <div id="printArea"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/qr.js?v=6.0.0"></script>
-  <script src="js/demo-data.js?v=6.0.0"></script>
-  <script src="js/media.js?v=6.0.0"></script>
-  <script src="js/workspace.js?v=6.0.0"></script>
-  <script src="js/app.js?v=6.0.0"></script>
+  <script src="js/qr.js?v=6.1.0"></script>
+  <script src="js/demo-data.js?v=6.1.0"></script>
+  <script src="js/media.js?v=6.1.0"></script>
+  <script src="js/workspace.js?v=6.1.0"></script>
+  <script src="js/app.js?v=6.1.0"></script>
 </body>
 </html>

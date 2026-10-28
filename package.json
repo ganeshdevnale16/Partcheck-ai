@@ -1,6 +1,6 @@
 {
   "name": "inspection-ai",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "private": true,
   "description": "Inspection AI \u2013 QR tags, real AI photo and live inspection (Azure OpenAI, OpenAI, Gemini, Claude), role dashboards, projects and alerts",
   "type": "module",

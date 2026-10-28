@@ -107,11 +107,12 @@ async function postJson(url, headers, body, timeoutMs) {
   } finally { clearTimeout(t); }
 }
 
-export async function callVision(cfg, { system, text, images = [], maxTokens = 4000, json = true, timeoutMs = 55000 }) {
+export async function callVision(cfg, { system, text, images = [], docs = [], maxTokens = 4000, json = true, timeoutMs = 55000 }) {
   const p = cfg.provider;
+  if (docs.length && p === 'azure') { const e = new Error('It cannot read PDF files directly. Use a PDF with selectable text, or paste the text into the description.'); e.status = 400; throw e; }
   if (p === 'gemini') {
     const model = cfg.model || PROVIDERS.gemini.defaultModel;
-    const parts = [...images.map((im) => ({ inline_data: { mime_type: mime(im), data: b64(im) } })), { text }];
+    const parts = [...docs.map((d) => ({ inline_data: { mime_type: d.mime, data: d.data } })), ...images.map((im) => ({ inline_data: { mime_type: mime(im), data: b64(im) } })), { text }];
     const j = await postJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       { 'x-goog-api-key': cfg.apiKey },
       { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts }],
@@ -122,13 +123,13 @@ export async function callVision(cfg, { system, text, images = [], maxTokens = 4
   }
   if (p === 'anthropic') {
     const model = cfg.model || PROVIDERS.anthropic.defaultModel;
-    const content = [...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: mime(im), data: b64(im) } })), { type: 'text', text }];
+    const content = [...docs.map((d) => ({ type: 'document', source: { type: 'base64', media_type: d.mime, data: d.data } })), ...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: mime(im), data: b64(im) } })), { type: 'text', text }];
     const j = await postJson('https://api.anthropic.com/v1/messages', { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
       { model, max_tokens: maxTokens, system: system + (json ? '\nReply with one JSON object only, no other text.' : ''), messages: [{ role: 'user', content }] }, timeoutMs);
     return (j?.content || []).map((x) => x.text || '').join('');
   }
   // OpenAI and Azure OpenAI share the chat-completions format
-  const messages = [{ role: 'system', content: system }, { role: 'user', content: [{ type: 'text', text }, ...images.map((im) => ({ type: 'image_url', image_url: { url: im, detail: 'high' } }))] }];
+  const messages = [{ role: 'system', content: system }, { role: 'user', content: [{ type: 'text', text }, ...docs.map((d) => ({ type: 'file', file: { filename: d.name || 'document.pdf', file_data: `data:${d.mime};base64,${d.data}` } })), ...images.map((im) => ({ type: 'image_url', image_url: { url: im, detail: 'high' } }))] }];
   let url, headers, body = { messages, max_completion_tokens: maxTokens, ...(json ? { response_format: { type: 'json_object' } } : {}) };
   if (p === 'azure') {
     url = `${cfg.endpoint}/openai/deployments/${encodeURIComponent(cfg.deployment)}/chat/completions?api-version=${encodeURIComponent(cfg.apiVersion || '2024-10-21')}`;
@@ -248,11 +249,37 @@ Return JSON:
 }`;
 }
 
-export function suggestPrompt(name, description) {
-  return `Create a visual inspection checklist for: "${name}"${description ? ` (${description})` : ''}.
-Design 2-6 camera views (photo angles) and 1-5 checks per view that can be judged from a photo.
-Mark life-safety checks as critical. Return JSON:
-{ "description": "one line", "idLabel": "name of the ID field", "safety": true or false,
+export const SYSTEM_CHECKLIST = `You are a senior audit and inspection specialist who designs practical checklists for ANY industry:
+food safety and hygiene (FSSAI, HACCP, kitchens, restaurants, food factories), fire safety, electrical, construction and scaffolding,
+manufacturing, warehouses, vehicles and fleets, hotels, hospitals, offices, retail, utilities and more.
+Always build the checklist for the subject the user names and describes. Never fall back to scaffolding or any other topic
+unless the user asks for it. When documents are attached, take the requirements from them (clauses, schedules, standards)
+and turn them into checks; keep the clause or section number in the rule when there is one.`;
+
+export function suggestPrompt({ name, description, documentText, fileNames = [], imageCount = 0, docCount = 0 }) {
+  const attached = [
+    fileNames.length ? `Attached files: ${fileNames.join(', ')}.` : '',
+    docCount ? `${docCount} PDF document(s) are attached – read them.` : '',
+    imageCount ? `${imageCount} reference photo(s) are attached – use them to understand the item / place being inspected.` : '',
+  ].filter(Boolean).join('\n');
+  return `Create an inspection checklist.
+Inspection name: "${name}"
+${description ? `Description from the user: ${description}` : ''}
+${attached}
+${documentText ? `\nText of the attached document(s) (may be cut short):\n"""\n${documentText}\n"""\n` : ''}
+Rules:
+- The inspector uses a phone camera. Group checks into 2-8 "views" = places or angles to photograph (e.g. for an FSSAI kitchen audit:
+  "Food storage area", "Cooking area", "Wash area", "Staff & hygiene", "Licence & records display").
+- 2-8 checks per view. Each check must be something a photo can show. If a requirement cannot be seen in a photo
+  (e.g. a register or certificate), make the check about photographing that document or notice.
+- "rule" = what must be visibly true, in plain English (add the clause / section from the document when known).
+- Mark checks critical when failing them is a serious safety, hygiene or legal risk.
+- "general" = checks that can be seen in any view (0-4 checks).
+
+Return JSON:
+{ "description": "one line describing this inspection", "idLabel": "name of the ID field (e.g. FSSAI licence no., Asset ID)",
+  "safety": true or false (true = life-safety equipment, result words Safe to use / Do not use),
   "angles": [{ "name": "view name", "guidance": "how to frame the photo", "checks": [{ "name": "short name", "rule": "what must be visibly true", "critical": true or false }] }],
-  "general": [{ "name": "", "rule": "", "critical": false }] }`;
+  "general": [{ "name": "", "rule": "", "critical": false }],
+  "basedOn": "one short sentence: what you based the checklist on" }`;
 }
