@@ -1,3 +1,6 @@
 node_modules
 .env
 logs
+# Locally trained model weights can be large/private; provision them on the host.
+detector/models/*.pt
+runs/

@@ -1,0 +1,13 @@
+# Example only: replace paths and classes with the labels in your dataset.
+path: /data/partcheck
+train: images/train
+val: images/val
+test: images/test
+names:
+  0: safety_helmet
+  1: safety_harness
+  2: guardrail
+  3: scaffold_damage
+  4: concrete_crack
+  5: concrete_spalling
+  6: corrosion

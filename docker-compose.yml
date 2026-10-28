@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DETECTOR_URL: http://detector:8001
+      # Add AI provider secrets here or in an untracked .env file.
+      ADMIN_KEY: ${ADMIN_KEY:-}
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-10-21}
+    depends_on:
+      - detector
+    restart: unless-stopped
+  detector:
+    build: ./detector
+    environment:
+      PARTCHECK_MODEL_PATH: /models/partcheck.pt
+      PARTCHECK_DEVICE: cpu
+      PARTCHECK_MIN_CONFIDENCE: "0.35"
+    volumes:
+      - ./detector/models:/models:ro
+    expose:
+      - "8001"
+    restart: unless-stopped

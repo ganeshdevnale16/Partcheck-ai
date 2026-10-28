@@ -8,15 +8,46 @@ import {
 const MAX_PHOTOS = 12;
 const okImage = (s) => typeof s === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(s) && s.length < 3_000_000;
 const clip = (v, n = 400) => String(v ?? '').slice(0, n);
-const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : null);
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+// Accept normalized [x,y,w,h] or 0..1000 model coordinates, reject malformed boxes.
 function box(b) {
   if (!Array.isArray(b) || b.length !== 4) return null;
-  let [x, y, w, h] = b.map(Number);
+  let [x, y, w, h] = b.map((v) => typeof v === 'number' || (typeof v === 'string' && v.trim() !== '') ? Number(v) : NaN);
   if ([x, y, w, h].some((v) => !Number.isFinite(v))) return null;
-  if (x > 1 || y > 1 || w > 1 || h > 1) { x /= 1000; y /= 1000; w /= 1000; h /= 1000; } // some models answer in 0-1000
-  x = num(x); y = num(y); w = num(w); h = num(h);
-  if (w < 0.01 || h < 0.01) return null;
-  return [x, y, Math.min(w, 1 - x), Math.min(h, 1 - y)];
+  if ([x, y, w, h].some((v) => v > 1)) {
+    // Only accept the common 0..1000 representation when all coordinates fit it.
+    if ([x, y, w, h].some((v) => v < 0 || v > 1000)) return null;
+    [x, y, w, h] = [x, y, w, h].map((v) => v / 1000);
+  }
+  if (x < 0 || y < 0 || w <= 0 || h <= 0 || x >= 1 || y >= 1) return null;
+  w = Math.min(w, 1 - x); h = Math.min(h, 1 - y);
+  if (w < 0.005 || h < 0.005) return null;
+  return [x, y, w, h];
+}
+
+const STOP_WORDS = new Set(['the','and','for','with','from','that','this','area','item','visible','check','present','missing','safe','safety','site','construction','correctly','installed','properly','issue','defect','damage']);
+function terms(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(/\s+/).map((t) => t.endsWith('s') && t.length > 4 ? t.slice(0, -1) : t).filter((t) => t.length > 2 && !STOP_WORDS.has(t)); }
+function matchDetection(detections, label, threshold = 0.45) {
+  const wanted = new Set(terms(label));
+  if (!wanted.size) return null;
+  return (detections || []).filter((d) => Number(d.confidence) >= threshold && box(d.box))
+    .map((d) => ({ ...d, _overlap: terms(d.label).filter((t) => wanted.has(t)).length }))
+    .filter((d) => d._overlap > 0).sort((a, b) => b._overlap - a._overlap || b.confidence - a.confidence)[0] || null;
+}
+async function detectPhotos(photos) {
+  const base = String(process.env.DETECTOR_URL || '').trim().replace(/\/+$/, '');
+  if (!base) return { enabled: false, byPhoto: [], reason: 'DETECTOR_URL is not configured' };
+  const byPhoto = await Promise.all(photos.map(async (p, index) => {
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 9000);
+    try {
+      const r = await fetch(`${base}/detect`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ image: p.image, confidence: 0.35 }), signal: controller.signal });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.ok) return { photo: index + 1, detections: [], available: false, reason: data.error || `Detector HTTP ${r.status}` };
+      return { photo: index + 1, detections: (data.detections || []).map((d) => ({ label: clip(d.label, 80), confidence: Math.max(0, Math.min(1, Number(d.confidence) || 0)), box: box(d.box) })).filter((d) => d.label && d.box), available: true, model: clip(data.model, 100) };
+    } catch (e) { return { photo: index + 1, detections: [], available: false, reason: e.name === 'AbortError' ? 'Detector timed out' : 'Detector unavailable' }; }
+    finally { clearTimeout(timer); }
+  }));
+  return { enabled: true, byPhoto, reason: byPhoto.some((p) => p.available) ? '' : 'Detector did not return results' };
 }
 const STATUS = new Set(['present', 'missing', 'unclear']);
 const SEV = new Set(['high', 'medium', 'low']);
@@ -71,11 +102,19 @@ export default async function handler(req, res) {
       const p = { item: clip(b.item, 80), description: clip(b.description, 300), assetId: clip(b.assetId, 60), location: clip(b.location, 160), photos: photos.map((x) => ({ view: clip(x.view, 60) })), checks };
       const images = photos.map((x) => x.image);
       const raw = parseJson(await callVision(cfg, { system: SYSTEM_INSPECTOR, text: evaluatePrompt(p), images, maxTokens: 6000 }));
+      // Optional object detector corroborates location. If absent/untrained, vision results still work but remain unverified.
+      const detector = await detectPhotos(photos);
       const byId = new Map((raw.checks || []).map((c) => [String(c.id), c]));
       let results = checks.map((c) => {
         const r = byId.get(c.id) || {};
         const photo = Number(r.photo) >= 1 && Number(r.photo) <= photos.length ? Number(r.photo) : null;
-        return { id: c.id, status: STATUS.has(r.status) ? r.status : 'unclear', evidence: clip(r.evidence || (byId.has(c.id) ? '' : 'Not assessed by the AI'), 300), photo, box: photo ? box(r.box) : null };
+        const status = STATUS.has(r.status) ? r.status : 'unclear';
+        const aiBox = photo ? box(r.box) : null;
+        const ds = photo ? detector.byPhoto[photo - 1]?.detections || [] : [];
+        const match = status === 'present' ? matchDetection(ds, `${c.name} ${c.rule} ${r.evidence}`) : null;
+        const chosenBox = match?.box || aiBox;
+        return { id: c.id, status, evidence: clip(r.evidence || (byId.has(c.id) ? '' : 'Not assessed by the AI'), 300), photo, box: chosenBox,
+          localization: match ? { source: 'object_detector', corroborated: true, verified: false, label: match.label, confidence: match.confidence } : { source: aiBox ? 'vision_estimate' : 'none', verified: false, confidence: null } };
       });
       // second, independent check of every OK (strict mode)
       let verified = false;
@@ -100,7 +139,17 @@ export default async function handler(req, res) {
           item_identified: clip(raw.item_identified, 160), item_matches: raw.item_matches !== false,
           photo_quality: (raw.photo_quality || []).slice(0, MAX_PHOTOS).map((q) => ({ photo: Number(q.photo) || 0, ok: q.ok !== false, issue: clip(q.issue, 160) })),
           checks: results,
-          defects: (raw.defects || []).slice(0, 15).map((d) => ({ photo: Number(d.photo) || null, description: clip(d.description, 240), severity: SEV.has(d.severity) ? d.severity : 'medium', box: box(d.box) })).filter((d) => d.description),
+          defects: (raw.defects || []).slice(0, 15).map((d) => {
+            const photo = Number(d.photo) >= 1 && Number(d.photo) <= photos.length ? Number(d.photo) : null;
+            const description = clip(d.description, 240);
+            const ds = photo ? detector.byPhoto[photo - 1]?.detections || [] : [];
+            const match = matchDetection(ds, description);
+            const aiBox = box(d.box);
+            return { photo, description, severity: SEV.has(d.severity) ? d.severity : 'medium', box: match?.box || aiBox,
+              localization: match ? { source: 'object_detector', corroborated: true, verified: false, label: match.label, confidence: match.confidence } : { source: aiBox ? 'vision_estimate' : 'none', verified: false, confidence: null } };
+          }).filter((d) => d.description),
+          detector: { enabled: detector.enabled, available: detector.byPhoto.some((p) => p.available), model: detector.byPhoto.find((p) => p.model)?.model || null,
+            note: detector.enabled ? (detector.byPhoto.some((p) => p.available) ? 'Detector boxes only replace vision boxes when the detector class matches the finding. Missing-item findings cannot be confirmed by object presence alone.' : detector.reason) : 'Optional detector is not configured; boxes are vision-model estimates and are not independently localized.' },
           summary: clip(raw.summary, 900), recommendations: (raw.recommendations || []).slice(0, 10).map((r) => clip(r, 260)).filter(Boolean),
         },
       });
@@ -111,13 +160,19 @@ export default async function handler(req, res) {
       const checks = (Array.isArray(b.checks) ? b.checks : []).slice(0, 60).map((c) => ({ id: clip(c.id, 10), name: clip(c.name, 80), rule: clip(c.rule, 200), critical: !!c.critical }));
       const p = { item: clip(b.item, 80), assetId: clip(b.assetId, 60), views: (b.views || []).slice(0, 12).map((v) => clip(v, 60)), view: clip(b.view, 60), checks };
       const raw = parseJson(await callVision(cfg, { system: SYSTEM_INSPECTOR, text: framePrompt(p), images: [b.image], maxTokens: 1800, timeoutMs: 25000 }));
+      const detector = await detectPhotos([{ image: b.image }]);
+      const ds = detector.byPhoto[0]?.detections || [];
       const ids = new Set(checks.map((c) => c.id));
       return res.json({
         ok: true, ms: Date.now() - started,
         result: {
           view_guess: clip(raw.view_guess, 60), frame_ok: raw.frame_ok !== false, hint: clip(raw.hint, 80),
-          checks: (raw.checks || []).filter((c) => ids.has(String(c.id)) && (c.status === 'present' || c.status === 'missing')).map((c) => ({ id: String(c.id), status: c.status, evidence: clip(c.evidence, 240), box: box(c.box) })),
-          defects: (raw.defects || []).slice(0, 5).map((d) => ({ description: clip(d.description, 200), severity: SEV.has(d.severity) ? d.severity : 'medium', box: box(d.box) })).filter((d) => d.description),
+          checks: (raw.checks || []).filter((c) => ids.has(String(c.id)) && (c.status === 'present' || c.status === 'missing')).map((c) => {
+            const m = c.status === 'present' ? matchDetection(ds, `${checks.find((x) => x.id === String(c.id))?.name || ''} ${checks.find((x) => x.id === String(c.id))?.rule || ''} ${c.evidence || ''}`) : null;
+            return { id: String(c.id), status: c.status, evidence: clip(c.evidence, 240), box: m?.box || box(c.box), localization: m ? { source: 'object_detector', verified: true, label: m.label, confidence: m.confidence } : { source: box(c.box) ? 'vision_estimate' : 'none', verified: false } };
+          }),
+          defects: (raw.defects || []).slice(0, 5).map((d) => { const m = matchDetection(ds, d.description); return { description: clip(d.description, 200), severity: SEV.has(d.severity) ? d.severity : 'medium', box: m?.box || box(d.box), localization: m ? { source: 'object_detector', verified: true, label: m.label, confidence: m.confidence } : { source: box(d.box) ? 'vision_estimate' : 'none', verified: false } }; }).filter((d) => d.description),
+          detector: { enabled: detector.enabled, available: detector.byPhoto.some((p) => p.available), model: detector.byPhoto.find((p) => p.model)?.model || null },
         },
       });
     }
