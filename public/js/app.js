@@ -52,16 +52,9 @@
   const ANY = 'Any view';
   // evidence outline: [x, y, w, h] rectangle or { poly: [[x, y], ...] }, all as fractions of the photo
   const bboxOf = (b) => {
-    if (Array.isArray(b) && b.length === 4 && b.every((v) => Number.isFinite(Number(v)))) {
-      let [x, y, w, h] = b.map(Number);
-      // Defensive clamp: malformed model coordinates must never push overlays outside the photo.
-      x = Math.max(0, Math.min(1, x)); y = Math.max(0, Math.min(1, y));
-      w = Math.max(0, Math.min(1 - x, w)); h = Math.max(0, Math.min(1 - y, h));
-      return w > 0 && h > 0 ? [x, y, w, h] : null;
-    }
-    if (!b || !Array.isArray(b.poly) || b.poly.length < 3 || !b.poly.every((p) => Array.isArray(p) && p.length >= 2 && p.every((v) => Number.isFinite(Number(v))))) return null;
-    const xs = b.poly.map((p) => Math.max(0, Math.min(1, Number(p[0]))));
-    const ys = b.poly.map((p) => Math.max(0, Math.min(1, Number(p[1]))));
+    if (!b) return null;
+    if (Array.isArray(b)) return b;
+    const xs = b.poly.map((p) => p[0]), ys = b.poly.map((p) => p[1]);
     return [Math.min(...xs), Math.min(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
   };
   // the photo (view) a check's evidence is shown on
@@ -1409,26 +1402,37 @@
   function boxesFor(rec, group) {
     return (rec.result?.checklist || []).filter((c) => c.box && viewOf(c) === group);
   }
+  // boxes on (almost) the same spot become one box: worst colour wins, labels listed together
+  const WORST = { missing: 0, unclear: 1, present: 2 };
+  function iou(a, b) {
+    const x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]), x2 = Math.min(a[0] + a[2], b[0] + b[2]), y2 = Math.min(a[1] + a[3], b[1] + b[3]);
+    const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+    return inter / (a[2] * a[3] + b[2] * b[3] - inter || 1);
+  }
+  function mergeBoxes(rows) {
+    const out = [];
+    rows.forEach((c) => {
+      const b = bboxOf(c.box), poly = !Array.isArray(c.box);
+      const hit = !poly && out.find((m) => !m.poly && iou(m.b, b) > 0.6);
+      if (hit) { hit.items.push(c); if (WORST[c.status] < WORST[hit.status]) hit.status = c.status; }
+      else out.push({ b, poly, status: c.status, items: [c] });
+    });
+    out.forEach((m) => m.items.sort((x, y) => WORST[x.status] - WORST[y.status]));
+    return out;
+  }
   function annoHtml(rec, group, shot, zoomable = true) {
     if (!shot) return `<div class="noimg">${group === ANY ? 'All views' : 'No photo'}</div>`;
     // demo boxes belong to the sample photos, so they are hidden on the inspector's own photos;
     // real-AI boxes were found on this exact photo, so they always show (unless switched off for live scans)
     const realAi = rec.result?.demo === false;
     const hideLive = realAi && rec.mode === 'live' && !aiSettings().boxes;
-    const checklistBoxes = hideLive || (shot.custom && !realAi) ? [] : boxesFor(rec, group);
-    // Defect boxes were previously dropped when building the result, so genuine AI hazards
-    // appeared in the list but had no red rectangle on the evidence photo.
-    const defectBoxes = hideLive || !realAi ? [] : (rec.result?.ai?.defects || [])
-      .filter((d) => d.box && d.angle === group)
-      .map((d) => ({ id: `defect-${d.description}`, part: `AI defect: ${d.description}`, status: 'missing', box: d.box, isDefect: true }));
-    const boxes = [...checklistBoxes, ...defectBoxes].filter((c) => bboxOf(c.box));
+    const boxes = hideLive || (shot.custom && !realAi) ? [] : boxesFor(rec, group);
     return `<div class="anno" ${zoomable ? `data-zoom="${esc(group)}"` : ''}><img src="${esc(shot.src)}" ${shot.key ? `data-key="${esc(shot.key)}"` : ''} alt="${esc(group)} photo" />
-      ${boxes.map((c) => { const b = bboxOf(c.box); const label = c.isDefect ? c.part : splitCheck(c.part).name; const lbl = `<em>${c.status === 'present' ? ICON.present : c.status === 'unclear' ? ICON.unclear : ICON.missing} ${esc(label)}</em>`;
-        if (!b) return '';
-        if (Array.isArray(c.box)) return `<span class="bx ${c.status} ${b[1] < 0.09 ? 'low' : ''}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%">${lbl}</span>`;
-        return `<span class="bx poly ${c.status} ${b[1] < 0.09 ? 'low' : ''}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%">${lbl}</span>`;
-      }).join('')}
-      ${boxes.some((c) => !Array.isArray(c.box)) ? `<svg class="polys" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${boxes.filter((c) => !Array.isArray(c.box) && c.box?.poly).map((c) => `<polygon class="${c.status}" points="${c.box.poly.map((p) => `${Math.max(0, Math.min(1, p[0])) * 100},${Math.max(0, Math.min(1, p[1])) * 100}`).join(' ')}" />`).join('')}</svg>` : ''}
+      ${mergeBoxes(boxes).map((m) => { const b = m.b;
+        const more = m.items.length - 3;
+        const lbl = `<em class="${m.status}">${m.items.slice(0, 3).map((c) => `<i class="${c.status}">${ICON[c.status]} ${esc(splitCheck(c.part).name)}</i>`).join('')}${more > 0 ? `<i class="more">+${more} more here</i>` : ''}</em>`;
+        return `<span class="bx ${m.poly ? 'poly ' : ''}${m.status} ${b[1] < 0.09 ? 'low' : ''}" style="left:${b[0] * 100}%;top:${b[1] * 100}%;width:${b[2] * 100}%;height:${b[3] * 100}%">${lbl}</span>`; }).join('')}
+      ${boxes.some((c) => !Array.isArray(c.box)) ? `<svg class="polys" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${boxes.filter((c) => !Array.isArray(c.box)).map((c) => `<polygon class="${c.status}" points="${c.box.poly.map((p) => `${p[0] * 100},${p[1] * 100}`).join(' ')}" />`).join('')}</svg>` : ''}
       <div class="wm">${esc(wmText(rec, group, shot.ts))}</div></div>`;
   }
   function partRow(c) {
@@ -1792,7 +1796,7 @@
   }, true);
 
   // ======================= REAL AI (Azure OpenAI / OpenAI / Gemini / Claude) =======================
-  const AI_DEFAULTS = { mode: 'demo', keyPlace: 'server', device: { provider: 'gemini', apiKey: '', model: '', endpoint: '', deployment: '', apiVersion: '2024-10-21' }, verify: true, frameSec: 3, gps: true, boxes: true };
+  const AI_DEFAULTS = { mode: 'demo', keyPlace: 'server', device: { provider: 'gemini', apiKey: '', model: '', endpoint: '', deployment: '', apiVersion: '2024-10-21' }, verify: true, frameSec: 3, gps: true, boxes: true, precise: true };
   const PROVIDER_INFO = {
     azure: { label: 'Azure OpenAI', model: '' },
     openai: { label: 'OpenAI', model: 'gpt-5-mini' },
@@ -1842,7 +1846,7 @@
   }
 
   function buildAiResult(rec, rows, ai, extra = {}) {
-    const defects = (ai.defects || []).map((d) => ({ angle: d.view || '', description: d.description, severity: d.severity, box: bboxOf(d.box), photo: d.photo || null }));
+    const defects = (ai.defects || []).map((d) => ({ angle: d.view || '', description: d.description, severity: d.severity }));
     const d = decide(rows, defects, rec);
     return {
       ...d, checklist: rows,
@@ -1850,6 +1854,48 @@
       secondCheck: !!extra.verified, evaluatedAt: new Date().toISOString(), liveStats: extra.liveStats || null,
       engine: extra.info ? `${extra.info.label}${extra.info.model ? ' · ' + extra.info.model : ''}` : '', demo: false,
     };
+  }
+
+  // ---------- precise marking: ask WHERE each finding is, one photo at a time ----------
+  // a copy of the photo with a light 0-1000 grid: helps GPT / Claude read positions (Gemini does not need it)
+  function gridCopy(dataUrl) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+        const fs = Math.max(11, Math.round(Math.min(c.width, c.height) / 45));
+        x.lineWidth = Math.max(1, c.width / 900);
+        for (let i = 1; i < 10; i++) {
+          const px = (c.width * i) / 10, py = (c.height * i) / 10;
+          x.strokeStyle = 'rgba(255,255,255,.55)'; x.beginPath(); x.moveTo(px, 0); x.lineTo(px, c.height); x.moveTo(0, py); x.lineTo(c.width, py); x.stroke();
+          x.strokeStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.moveTo(px + 1, 0); x.lineTo(px + 1, c.height); x.moveTo(0, py + 1); x.lineTo(c.width, py + 1); x.stroke();
+          x.font = `700 ${fs}px Arial`; x.lineWidth = 3; x.strokeStyle = 'rgba(0,0,0,.8)'; x.fillStyle = '#fff';
+          x.strokeText(String(i * 100), px + 3, fs + 2); x.fillText(String(i * 100), px + 3, fs + 2);
+          x.strokeText(String(i * 100), 3, py - 3); x.fillText(String(i * 100), 3, py - 3);
+          x.lineWidth = Math.max(1, c.width / 900);
+        }
+        resolve(c.toDataURL('image/jpeg', 0.82));
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    });
+  }
+  // targets: [{ id, row, view, image }] grouped per photo; updates row.box in place
+  async function locateFindings(item, groups, provider) {
+    const useGrid = provider && provider !== 'gemini';
+    await Promise.all(groups.map(async (g) => {
+      if (!g.rows.length) return;
+      try {
+        const image = useGrid ? await gridCopy(g.image) : g.image;
+        const j = await aiCall('locate', {
+          image, grid: useGrid, item, view: g.view,
+          items: g.rows.map((r, i) => { const sc = splitCheck(r.part); return { id: 'k' + (i + 1), name: sc.name, rule: sc.rule, result: r.status === 'missing' ? 'NOT OK' : 'OK', evidence: r.note }; }),
+        });
+        const byId = new Map(j.result.items.map((t) => [t.id, t.box]));
+        g.rows.forEach((r, i) => { r.box = byId.get('k' + (i + 1)) || null; r.located = true; });
+      } catch { /* keep the first-pass boxes if marking fails */ }
+    }));
   }
 
   // ---------- photo by photo: send every photo once, get the full checklist back ----------
@@ -1875,6 +1921,12 @@
         if (c.group === ANY) row.foundIn = photoView || views[0]?.name || '';
         return row;
       });
+      // second pass: mark every OK / Not OK on its own photo (much more accurate positions)
+      if (aiSettings().precise) {
+        overlay.label('Marking the findings on each photo');
+        const groups = photos.map((ph) => ({ view: ph.view, image: ph.image, rows: rows.filter((r) => (r.status === 'present' || r.status === 'missing') && (r.foundIn || r.group) === ph.view) }));
+        await locateFindings(cur.typeName, groups, j.info?.provider);
+      }
       const ai = { ...res, defects: res.defects.map((d) => ({ ...d, view: d.photo ? photos[d.photo - 1]?.view : '' })) };
       if (res.item_matches === false) ai.summary = `The photos do not look like a ${cur.typeName.toLowerCase()} (AI saw: ${res.item_identified}). ${ai.summary}`;
       await overlay.finish();
@@ -1895,6 +1947,7 @@
     step();
     const timer = setInterval(step, 5000);
     return {
+      label(t) { const h = $('h3', el); if (h) h.textContent = t; },
       async finish() { clearInterval(timer); lis.forEach((li) => { li.classList.remove('doing'); li.classList.add('done'); $('i', li).textContent = '✓'; }); await sleep(450); el.remove(); },
       cancel() { clearInterval(timer); el.remove(); },
     };
@@ -1905,6 +1958,7 @@
   const lvVideo = document.createElement('video'); lvVideo.playsInline = true; lvVideo.muted = true;
 
   async function startLiveAi() {
+    if (!serverAi && !deviceCfg()) loadServerAi();
     const rec = state.cur;
     rec.mode = 'live';
     Object.assign(RL, { on: true, busy: false, paused: false, hits: {}, decided: new Map(), list: aiChecklist(rec), frames: 0, frameNo: 0, startedAt: Date.now(), view: rec.angles[0]?.name || '', pinnedAt: 0, last: null, lastAt: 0, shots: {}, defects: [], err: 0 });
@@ -2093,6 +2147,17 @@
       } else if (hh) row.note = `Seen once (${hh.present ? 'looked OK' : 'looked Not OK'}): ${hh.evidence || ''} – not confirmed`;
       return row;
     });
+    // re-mark every finding on the exact frame it is shown on (one frame at a time = accurate boxes)
+    if (boxesOn && aiSettings().precise) {
+      const names = Object.keys(rec.shots);
+      const groups = names.map((n) => ({ view: n, image: rec.shots[n].src, rows: rows.filter((r) => (r.status === 'present' || r.status === 'missing') && (r.foundIn || r.group) === n && RL.decided.has(RL.list.find((c) => c.part === r.part && c.group === r.group)?.id)) })).filter((g) => g.rows.length && String(g.image).startsWith('data:'));
+      if (groups.length) {
+        const ov = analyseStart(groups[0].image, ['Marking the findings on the scan photos']);
+        const provider = deviceCfg()?.provider || serverAi?.server?.provider || serverAi?.env?.provider || '';
+        await locateFindings(rec.typeName, groups, provider);
+        await ov.finish();
+      }
+    }
     const ai = { defects: RL.defects.map((d) => ({ view: d.view, description: d.description, severity: d.severity })), summary: liveSummary(rows), recommendations: [] };
     rec.result = buildAiResult(rec, rows, ai, { liveStats: { frames: RL.frames, seconds: Math.round((Date.now() - RL.startedAt) / 1000) }, info });
     rec.result.engine = 'Live AI scan';
@@ -2202,7 +2267,7 @@
     $$('#aiPlaceSeg button').forEach((b) => b.classList.toggle('on', b.dataset.v === s.keyPlace));
     $('#aiProvider').value = s.device.provider;
     paintAiFields();
-    $('#aiVerify').checked = s.verify; $('#aiGps').checked = s.gps; $('#aiBoxes').checked = s.boxes; $('#aiFrameSec').value = String(s.frameSec);
+    $('#aiVerify').checked = s.verify; $('#aiGps').checked = s.gps; $('#aiBoxes').checked = s.boxes; $('#aiPrecise').checked = s.precise; $('#aiFrameSec').value = String(s.frameSec);
     $('#aiAdminKeyRow').hidden = s.keyPlace !== 'server';
     // status line
     const st = $('#aiStatus');
@@ -2247,7 +2312,7 @@
   $$('#aiModeSeg button').forEach((b) => b.addEventListener('click', () => { const s = aiSettings(); s.mode = b.dataset.v; saveAiSettings(s); paintAi(); track('ai_mode', { mode: s.mode }); toast(s.mode === 'live' ? 'Live AI is on – inspections use the real AI' : 'Demo mode – pre-recorded results'); }));
   $$('#aiPlaceSeg button').forEach((b) => b.addEventListener('click', () => { const s = aiSettings(); s.keyPlace = b.dataset.v; saveAiSettings(s); paintAi(); }));
   $('#aiProvider').addEventListener('change', paintAiFields);
-  ['#aiVerify', '#aiGps', '#aiBoxes'].forEach((id) => $(id).addEventListener('change', () => { const s = aiSettings(); s.verify = $('#aiVerify').checked; s.gps = $('#aiGps').checked; s.boxes = $('#aiBoxes').checked; saveAiSettings(s); }));
+  ['#aiVerify', '#aiGps', '#aiBoxes', '#aiPrecise'].forEach((id) => $(id).addEventListener('change', () => { const s = aiSettings(); s.verify = $('#aiVerify').checked; s.gps = $('#aiGps').checked; s.boxes = $('#aiBoxes').checked; s.precise = $('#aiPrecise').checked; saveAiSettings(s); }));
   $('#aiFrameSec').addEventListener('change', () => { const s = aiSettings(); s.frameSec = +$('#aiFrameSec').value; saveAiSettings(s); });
   $('#aiSave').addEventListener('click', async () => {
     const s = aiSettings();

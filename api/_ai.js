@@ -182,6 +182,33 @@ export async function rateLimit(ip, limit = 240) {
   } catch { return true; }
 }
 
+// ---------- box formats: ask each model in the format it was trained on ----------
+// Gemini: "box_2d": [ymin, xmin, ymax, xmax] on a 0-1000 scale (its native object-detection format).
+// OpenAI / Azure / Claude: "box": [xmin, ymin, xmax, ymax] on a 0-1000 scale (corners are far more reliable than width/height).
+export function boxSpec(provider) {
+  if (provider === 'gemini') return { key: 'box_2d', shape: '[ymin, xmin, ymax, xmax]', text: '"box_2d": [ymin, xmin, ymax, xmax] as integers from 0 to 1000 (0,0 = top-left of the photo, 1000,1000 = bottom-right)' };
+  return { key: 'box', shape: '[xmin, ymin, xmax, ymax]', text: '"box": [xmin, ymin, xmax, ymax] as integers from 0 to 1000 (0,0 = top-left of the photo, 1000,1000 = bottom-right)' };
+}
+// -> [x, y, w, h] fractions, or null when the box is unusable
+export function readBox(obj, provider) {
+  if (!obj) return null;
+  // Gemini order [ymin, xmin, ymax, xmax] when the answer uses "box_2d"; corner order [xmin, ymin, xmax, ymax] for "box"
+  const useB2d = obj.box_2d !== undefined && obj.box_2d !== null && (boxSpec(provider).key === 'box_2d' || obj.box === undefined || obj.box === null);
+  let b = useB2d ? obj.box_2d : obj.box;
+  if (!Array.isArray(b) || b.length !== 4) return null;
+  b = b.map(Number);
+  if (b.some((v) => !Number.isFinite(v))) return null;
+  const scale = b.every((v) => Math.abs(v) <= 1.0001) ? 1 : 1000; // some models answer 0-1 fractions anyway
+  let [x1, y1, x2, y2] = useB2d ? [b[1], b[0], b[3], b[2]] : b;
+  [x1, y1, x2, y2] = [x1, y1, x2, y2].map((v) => Math.min(1, Math.max(0, v / scale)));
+  if (x2 < x1) [x1, x2] = [x2, x1];
+  if (y2 < y1) [y1, y2] = [y2, y1];
+  const w = x2 - x1, h = y2 - y1;
+  if (w < 0.015 || h < 0.015) return null;      // too small to see
+  if (w * h > 0.82) return null;                 // covers the whole photo – marks nothing
+  return [+x1.toFixed(4), +y1.toFixed(4), +w.toFixed(4), +h.toFixed(4)];
+}
+
 // ---------- prompts ----------
 export const SYSTEM_INSPECTOR = `You are an experienced, certified site safety inspector (scaffolding, access equipment, fire and electrical equipment).
 You assess inspection photos against a checklist. Be strict and evidence based:
@@ -189,7 +216,7 @@ You assess inspection photos against a checklist. Be strict and evidence based:
 - "missing" (Not OK) when the photo clearly shows it is not met, or the item is absent where it should be visible.
 - "unclear" when it cannot be judged from the photos (hidden, out of frame, blurry, too dark).
 Never guess. Use short, plain-English evidence a site supervisor understands, describing what is actually visible.
-For every box, use [x, y, width, height] as NORMALIZED FRACTIONS from 0 to 1 of the exact supplied photo (origin at the top-left; x increases rightward, y downward). The values are not pixels and not 0–1000 coordinates. Carefully locate the visible evidence in the image before estimating the box; make it tight around the actual item/defect, not the whole structure or image. Keep the entire box inside the photo. A box must refer to the photo number returned for that check. For a missing requirement, box the clearly visible mounting/connection/location where the item should be only when that location is actually visible; do not draw a box around empty space or guess. If you cannot locate the evidence accurately, return null rather than an approximate or misleading box. Use null for general findings without one precise visual location.`;
+Boxes mark WHERE the evidence is in the photo, using the coordinate format given in the request. Use null when no single area applies.`;
 
 export function evaluatePrompt(p) {
   const photos = p.photos.map((ph, i) => `Photo ${i + 1}: view "${ph.view}"`).join('\n');
@@ -208,11 +235,13 @@ Return JSON:
   "item_identified": "what the photos show",
   "item_matches": true or false (do the photos show a ${p.item}?),
   "photo_quality": [{ "photo": 1, "ok": true, "issue": "" }],
-  "checks": [{ "id": "c1", "status": "present" | "missing" | "unclear", "evidence": "what you see", "photo": 1, "box": [x, y, w, h] or null }],
-  "defects": [{ "photo": 1, "description": "damage or hazard not covered by the checklist", "severity": "high" | "medium" | "low", "box": [x, y, w, h] or null }],
+  "checks": [{ "id": "c1", "status": "present" | "missing" | "unclear", "evidence": "what you see", "photo": 1, "${p.box.key}": ${p.box.shape} or null }],
+  "defects": [{ "photo": 1, "description": "damage or hazard not covered by the checklist", "severity": "high" | "medium" | "low", "${p.box.key}": ${p.box.shape} or null }],
   "summary": "2-3 sentence overall assessment",
   "recommendations": ["short corrective or next actions"]
 }
+Coordinates: ${p.box.text}, measured on the photo named in "photo".
+"photo" = the number of the photo that shows the evidence best.
 Return every checklist id exactly once.`;
 }
 
@@ -238,13 +267,14 @@ Views of this inspection: ${p.views.join(', ')}. The inspector says they are on:
 Checks still open (id | requirement):
 ${checks}
 
-Judge ONLY checks you can clearly see in THIS frame. Skip anything not visible. Box coordinates must be normalized fractions [x,y,width,height] from 0 to 1 relative to this exact frame, top-left origin (never pixels or 0–1000). Tight, accurate boxes only; use null if you cannot localize the evidence confidently. Never box the whole frame.
+Judge ONLY checks you can clearly see in THIS frame. Skip anything not visible.
+Coordinates: ${p.box.text}. Box tightly around the part that proves the result.
 Return JSON:
 {
   "view_guess": "which view this frame shows (one of the list) or \\"\\"",
   "frame_ok": true or false (sharp and bright enough),
-  "checks": [{ "id": "c1", "status": "present" | "missing", "evidence": "what you see", "box": [x, y, w, h] or null }],
-  "defects": [{ "description": "", "severity": "high" | "medium" | "low", "box": [x, y, w, h] or null }],
+  "checks": [{ "id": "c1", "status": "present" | "missing", "evidence": "what you see", "${p.box.key}": ${p.box.shape} or null }],
+  "defects": [{ "description": "", "severity": "high" | "medium" | "low", "${p.box.key}": ${p.box.shape} or null }],
   "hint": "one short instruction for what to point the camera at next (max 8 words)"
 }`;
 }
@@ -282,4 +312,26 @@ Return JSON:
   "angles": [{ "name": "view name", "guidance": "how to frame the photo", "checks": [{ "name": "short name", "rule": "what must be visibly true", "critical": true or false }] }],
   "general": [{ "name": "", "rule": "", "critical": false }],
   "basedOn": "one short sentence: what you based the checklist on" }`;
+}
+
+
+// Second pass, ONE photo at a time: only WHERE is each finding. Much more accurate than boxes from a multi-photo request.
+export const SYSTEM_LOCATE = `You are a precise visual annotator for site inspection photos. You draw bounding boxes around exactly the
+part of the photo a finding refers to. Precision matters more than coverage: when you cannot find the item clearly, return null.`;
+export function locatePrompt(p) {
+  const list = p.items.map((t) => `${t.id} | ${t.result} | ${t.name}${t.rule ? ' — requirement: ' + t.rule : ''}${t.evidence ? ' | inspector note: ' + t.evidence : ''}`).join('\n');
+  return `Photo: ${p.view ? `"${p.view}" view of ` : ''}a ${p.item}.
+${p.grid ? 'A light grid is drawn on the photo with labels every 100 units (0-1000) along the top and left edges – use it to read positions accurately.\n' : ''}
+Mark each finding below on THIS photo.
+- OK findings: box the object that proves the requirement is met (e.g. the base plate, the guardrail, the tag).
+- NOT OK findings: box the exact problem area. If something is missing, box the place where it should be
+  (e.g. the open platform edge with no toe board, the bare ground under a standard with no sole board).
+- Make each box tight around that object or area only, not the whole structure.
+- If the finding cannot be located confidently in this photo, give null.
+
+Findings (id | result | requirement):
+${list}
+
+Coordinates: ${p.box.text}.
+Return JSON: { "items": [{ "id": "c1", "${p.box.key}": ${p.box.shape} or null }] }`;
 }

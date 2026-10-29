@@ -1,7 +1,19 @@
-# Partcheck AI v6.3 — hybrid localization architecture
+# Inspection AI v6.2
 
 Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
 Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
+
+## What's new in v6.2 – accurate boxes
+- Boxes are requested in the format each model is trained on: Gemini `box_2d [ymin, xmin, ymax, xmax]`,
+  OpenAI / Azure / Claude `[xmin, ymin, xmax, ymax]`, both on a 0–1000 scale (was x, y, width, height fractions).
+- **Precise marking** (Settings → AI engine, on by default): after the AI decides OK / Not OK, it marks every
+  finding again on ONE photo at a time. GPT and Claude get a light 0–1000 grid on that copy of the photo to read
+  positions; Gemini does not need it. Live-scan evidence frames are re-marked the same way when you finish.
+  Cost: one small extra AI call per photo.
+- For a missing item (e.g. toe board) the box marks where it should be (the open platform edge).
+- Useless boxes are dropped (covering almost the whole photo, or tiny). If the AI cannot find a finding
+  confidently, no box is drawn instead of a wrong one.
+- Boxes on the same spot merge into one box (red beats yellow beats green) with up to 3 labels + "+N more".
 
 ## What's new in v6.1
 - **AI boxes on live-scan photos** – every OK / Not OK the live AI finds is drawn on the exact frame it was found in,
@@ -11,6 +23,18 @@ Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropi
   Enter a name and description (e.g. "FSSAI kitchen audit") and optionally add files: PDF, Word (.docx), Excel,
   CSV, text or photos (up to 6). The AI builds views and checks from them and keeps clause numbers from documents.
   Scanned PDFs are turned into page images in the browser, so they also work with Azure OpenAI.
+
+## What's new in v6.2 – accurate boxes
+- Boxes are requested in the format each model is trained on: Gemini `box_2d [ymin, xmin, ymax, xmax]`,
+  OpenAI / Azure / Claude `[xmin, ymin, xmax, ymax]`, both on a 0–1000 scale (was x, y, width, height fractions).
+- **Precise marking** (Settings → AI engine, on by default): after the AI decides OK / Not OK, it marks every
+  finding again on ONE photo at a time. GPT and Claude get a light 0–1000 grid on that copy of the photo to read
+  positions; Gemini does not need it. Live-scan evidence frames are re-marked the same way when you finish.
+  Cost: one small extra AI call per photo.
+- For a missing item (e.g. toe board) the box marks where it should be (the open platform edge).
+- Useless boxes are dropped (covering almost the whole photo, or tiny). If the AI cannot find a finding
+  confidently, no box is drawn instead of a wrong one.
+- Boxes on the same spot merge into one box (red beats yellow beats green) with up to 3 labels + "+N more".
 
 ## What's new in v6.1
 - **Live scan boxes are back** – every frame that proved a check is kept as an evidence photo with the AI's boxes
@@ -85,34 +109,3 @@ public/js/workspace.js  role dashboards + charts, projects & team, alerts
 public/js/demo-data.js  checklists, demo scenarios, sample tags
 render-server.js        local / Render server (same /api)
 ```
-
-## Optional object detector for better box localization (v6.2)
-
-The existing vision model still handles checklist reasoning and natural-language explanations. If `DETECTOR_URL` is configured, Partcheck also sends each inspection image to an optional YOLO detector. A detector box replaces a vision-estimated box only when a detector class label matches the check/defect text and its confidence is at least 0.45. If no match is found, the vision estimate is retained and marked in the API response as `localization.source: "vision_estimate"` with `verified: false`. The app remains usable if the detector is unavailable.
-
-**Important:** this ZIP does not contain trained construction-defect weights. The detector service intentionally returns 503 until a model is installed. Generic COCO weights are not sufficient for construction defects. The detection endpoint becomes useful only after you label and validate a dataset for your categories. Missing objects (such as an absent guardrail) cannot be located merely by object detection; the vision/checklist logic must judge absence from a suitable view, and uncertainty must remain unclear when the view is insufficient.
-
-### Run both services on one host with Docker Compose
-
-1. Install Docker Engine and the Docker Compose plugin.
-2. Put your trained model at `detector/models/partcheck.pt` (see training below). If you do not have weights yet, you can still start the services, but detector localization will report unavailable.
-3. Create a private `.env` file from `.env.example` and add your AI provider key. Never commit `.env`.
-4. Run `docker compose up --build -d`. Open `http://localhost:3000`.
-5. Check detector health at `http://localhost:8001/health` only from the host/container network; the compose file does not publish port 8001 to the public internet. The app calls it internally using `DETECTOR_URL=http://detector:8001`.
-6. View logs with `docker compose logs -f app detector`; stop with `docker compose down`.
-
-### Train your own detector
-
-1. Collect site photos representative of your users, devices, lighting, distance and camera angles.
-2. Label boxes using a tool such as CVAT or Label Studio, export in Ultralytics YOLO detection format, and split by site/project (not random near-duplicate frames) into train/validation/test sets. Include negative examples and different defect severities.
-3. Copy `detector/data-yaml.example.yaml` and edit the paths and class names to exactly match your labels. Make sure every class has enough diverse labelled examples.
-4. In a Python environment with a supported GPU if available, install `pip install -r detector/requirements.txt`, then run `python detector/train.py --data /path/to/data.yaml --weights yolov8s.pt --epochs 100 --imgsz 960 --device 0`. Use `--device cpu` if no supported GPU is available (training will be much slower).
-5. Review `runs/partcheck/defect-detector` metrics and, crucially, test images from unseen sites. Investigate false negatives and box quality; do not rely only on a single aggregate score. Copy `best.pt` to `detector/models/partcheck.pt`, then rebuild/restart the detector container.
-
-### Localization response and safety behavior
-
-Each check/defect can include `localization` metadata: `object_detector` means a class-matched detector box was used as additional localization evidence; it is still not guaranteed correct. `vision_estimate` means the box is an unverified vision-model estimate; `none` means no box was supplied. Confidence is a model score, not a guarantee of correctness. For a missing requirement, a detector cannot prove absence, so its lack of a detection must never turn the result green. Keep unclear results and qualified-inspector review for safety-critical findings.
-
-### Deployment compatibility
-
-The normal Node app can still run on Vercel/Render without the detector. For same-host deployment, Docker Compose is the simplest way to run Node and Python together. If you use Vercel serverless, host the detector separately on a private network-capable service and set `DETECTOR_URL` to its HTTPS endpoint; protect that endpoint with authentication and request limits before exposing it.
