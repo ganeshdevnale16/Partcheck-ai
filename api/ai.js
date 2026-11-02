@@ -38,7 +38,20 @@ export default async function handler(req, res) {
         .map((d) => ({ mime: 'application/pdf', data: d.data, name: clip(d.name, 120) }));
       const fileNames = (Array.isArray(b.fileNames) ? b.fileNames : []).slice(0, 10).map((f) => clip(f, 120));
       const text = suggestPrompt({ name, description: clip(b.description, 2000), documentText: clip(b.documentText, 60000), fileNames, imageCount: images.length, docCount: docs.length });
-      const raw = parseJson(await callVision(cfg, { system: SYSTEM_CHECKLIST, text, images, docs, maxTokens: 6000, timeoutMs: 55000 }));
+      // big documents can produce a long answer: if it is cut off, retry once asking for a compact checklist,
+      // and if that is cut off too, keep every complete view/check from the partial answer
+      let raw, partial = false;
+      const ask = async (extra, maxTokens) => parseJson(await callVision(cfg, { system: SYSTEM_CHECKLIST, text: text + extra, images, docs, maxTokens, timeoutMs: 50000 }), { allowPartial: false });
+      try { raw = await ask('', 12000); }
+      catch (e) {
+        if (e.code !== 'truncated' && !/not valid JSON/.test(e.message)) throw e;
+        try { raw = await ask('\n\nIMPORTANT: your previous answer was too long. Return at most 6 views with at most 6 checks each, rules under 15 words.', 12000); }
+        catch (e2) {
+          const rescued = (e2.partial || e.partial) ? parseJson(e2.partial || e.partial) : null;
+          if (!rescued || !Array.isArray(rescued.angles)) throw new Error('The AI answer was too long and was cut off. Try a shorter document or add a description of what to check.');
+          raw = rescued; partial = true;
+        }
+      }
       const chk = (c) => ({ name: clip(c?.name, 80).replace(/::|^!/g, ' ').trim(), rule: clip(c?.rule, 300).replace(/::/g, ' ').trim(), critical: !!c?.critical });
       const angles = (Array.isArray(raw.angles) ? raw.angles : []).slice(0, 8).map((v) => ({
         name: clip(v?.name, 60).trim(), guidance: clip(v?.guidance, 200).trim(),
@@ -49,7 +62,7 @@ export default async function handler(req, res) {
       angles.forEach((v) => { let n = v.name, k = 2; while (seen.has(n.toLowerCase())) n = `${v.name} ${k++}`; v.name = n; seen.add(n.toLowerCase()); });
       return res.json({
         ok: true, info: publicInfo(cfg), ms: Date.now() - started,
-        result: { description: clip(raw.description, 300), idLabel: clip(raw.idLabel, 40), safety: !!raw.safety, basedOn: clip(raw.basedOn, 300),
+        result: { partial, description: clip(raw.description, 300), idLabel: clip(raw.idLabel, 40), safety: !!raw.safety, basedOn: clip(raw.basedOn, 300),
           angles, general: (Array.isArray(raw.general) ? raw.general : []).slice(0, 6).map(chk).filter((c) => c.name) },
       });
     }
@@ -61,7 +74,7 @@ export default async function handler(req, res) {
       if (!checks.length) return res.status(400).json({ ok: false, error: 'No checks to evaluate.' });
       const p = { item: clip(b.item, 80), description: clip(b.description, 300), assetId: clip(b.assetId, 60), location: clip(b.location, 160), photos: photos.map((x) => ({ view: clip(x.view, 60) })), checks, box: boxSpec(cfg.provider) };
       const images = photos.map((x) => x.image);
-      const raw = parseJson(await callVision(cfg, { system: SYSTEM_INSPECTOR, text: evaluatePrompt(p), images, maxTokens: 6000 }));
+      const raw = parseJson(await callVision(cfg, { system: SYSTEM_INSPECTOR, text: evaluatePrompt(p), images, maxTokens: 10000 }));
       const byId = new Map((raw.checks || []).map((c) => [String(c.id), c]));
       let results = checks.map((c) => {
         const r = byId.get(c.id) || {};

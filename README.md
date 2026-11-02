@@ -1,7 +1,22 @@
-# Inspection AI v6.2
+# Inspection AI v6.4
 
 Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
 Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
+
+## What's new in v6.4 – several photos per view
+- After a view's first photo, tap **+ Same view** to take another photo of the same view (no typing).
+- Gallery upload accepts several photos at once; they all go to the current view.
+- Up to 12 photos per inspection. The AI judges each check using all photos of its view and marks the
+  finding on the exact photo that shows it. Every photo appears in the result and the PDF with its boxes.
+- Retake on an added photo removes it. The "+" button still adds a new, separately named view.
+
+## What's new in v6.3 – reliable AI answers (fixes "The AI answer was not valid JSON")
+- Claude now answers through a forced JSON tool call, so its answer is always one valid JSON object.
+- Cut-off answers are detected for every provider (Claude max_tokens, OpenAI/Azure length, Gemini MAX_TOKENS).
+- Checklist from big documents: much more answer room, a compact size limit in the prompt, one automatic
+  "keep it shorter" retry, and if it is still cut off, every complete view and check is kept (you are told).
+- GPT-5 / o-series: extra room for hidden reasoning and reasoning_effort "low"; removed automatically if a model rejects it.
+- Inspection answers can be repaired too (trailing commas, text around the JSON, cut-off endings).
 
 ## What's new in v6.2 – accurate boxes
 - Boxes are requested in the format each model is trained on: Gemini `box_2d [ymin, xmin, ymax, xmax]`,
@@ -23,6 +38,14 @@ Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropi
   Enter a name and description (e.g. "FSSAI kitchen audit") and optionally add files: PDF, Word (.docx), Excel,
   CSV, text or photos (up to 6). The AI builds views and checks from them and keeps clause numbers from documents.
   Scanned PDFs are turned into page images in the browser, so they also work with Azure OpenAI.
+
+## What's new in v6.3 – reliable AI answers (fixes "The AI answer was not valid JSON")
+- Claude now answers through a forced JSON tool call, so its answer is always one valid JSON object.
+- Cut-off answers are detected for every provider (Claude max_tokens, OpenAI/Azure length, Gemini MAX_TOKENS).
+- Checklist from big documents: much more answer room, a compact size limit in the prompt, one automatic
+  "keep it shorter" retry, and if it is still cut off, every complete view and check is kept (you are told).
+- GPT-5 / o-series: extra room for hidden reasoning and reasoning_effort "low"; removed automatically if a model rejects it.
+- Inspection answers can be repaired too (trailing commas, text around the JSON, cut-off endings).
 
 ## What's new in v6.2 – accurate boxes
 - Boxes are requested in the format each model is trained on: Gemini `box_2d [ymin, xmin, ymax, xmax]`,

@@ -1039,3 +1039,7 @@ main { padding: 1.25rem 1.1rem 2.5rem; }
 .doc .anno .bx.low em { bottom: auto; top: calc(100% + 1px); }
 
 .anno .bx em i.more { background: rgba(0,0,0,.72); color: #fff; }
+
+/* extra photos of the same view */
+.stepper button.sub { border-style: dashed; font-weight: 500; }
+#btnMore { font-weight: 600; }

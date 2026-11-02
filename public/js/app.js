@@ -785,20 +785,41 @@
     paintSource();
   });
 
+  // ---------- several photos per view: extra photos are stored as "sub-views" (of = the main view) ----------
+  const MAX_PHOTOS = 12;
+  const baseName = (a) => a.of || a.name;
+  const photoCount = (cur) => cur.angles.filter((a) => cur.shots[a.name]).length;
+  function addSubPhoto(cur, idx) {
+    const base = baseName(cur.angles[idx]);
+    const subs = cur.angles.filter((a) => a.of === base);
+    const nums = subs.map((a) => parseInt((a.name.match(/photo (\d+)$/) || [])[1], 10) || 0);
+    const n = Math.max(1, ...nums) + 1;
+    let last = cur.angles.findIndex((a) => a.name === base);
+    cur.angles.forEach((a, i) => { if (a.of === base) last = i; });
+    const angle = { name: `${base} – photo ${n}`, of: base, guidance: cur.angles.find((a) => a.name === base)?.guidance || '', parts: [], extra: true };
+    cur.angles.splice(last + 1, 0, angle);
+    return last + 1;
+  }
+  function dropEmptySubs(cur) { cur.angles = cur.angles.filter((a) => !a.of || cur.shots[a.name]); }
+
   function renderCapture() {
     const cur = state.cur;
     const a = cur.angles[P.idx];
     const shot = cur.shots[a.name];
-    const done = cur.angles.filter((x) => cur.shots[x.name]).length;
-    const total = cur.angles.length;
-    $('#capProgress').textContent = `${cur.asset.id}, view ${P.idx + 1} of ${total}`;
+    const bases = cur.angles.filter((x) => !x.of);
+    const done = bases.filter((x) => cur.shots[x.name]).length;
+    const total = bases.length;
+    const nPhotos = photoCount(cur);
+    const vIdx = bases.findIndex((x) => x.name === baseName(a)) + 1;
+    const nSame = cur.angles.filter((x) => baseName(x) === baseName(a) && cur.shots[x.name]).length;
+    $('#capProgress').textContent = `${cur.asset.id}, view ${vIdx} of ${total}${nSame > 1 || a.of ? ` · ${nSame} photo${nSame === 1 ? '' : 's'} of this view` : ''}`;
     $('#angleName').textContent = a.name;
-    $('#angleChips').innerHTML = cur.angles.map((x, i) => `<button type="button" role="tab" class="${i === P.idx ? 'cur' : ''} ${cur.shots[x.name] ? 'ok' : ''}" data-i="${i}">${i + 1}. ${esc(x.name)}</button>`).join('');
+    $('#angleChips').innerHTML = cur.angles.map((x, i) => `<button type="button" role="tab" class="${i === P.idx ? 'cur' : ''} ${cur.shots[x.name] ? 'ok' : ''} ${x.of ? 'sub' : ''}" data-i="${i}">${x.of ? `+ photo ${(x.name.match(/photo (\d+)$/) || [])[1] || ''}` : `${bases.indexOf(x) + 1}. ${esc(x.name)}`}</button>`).join('');
     $$('#angleChips button').forEach((b) => b.addEventListener('click', () => { P.idx = +b.dataset.i; P.viewSince = performance.now(); renderCapture(); }));
     const chip = $('#angleChips .cur'), bar = $('#angleChips');
     if (chip) bar.scrollTo({ left: chip.offsetLeft - (bar.clientWidth - chip.offsetWidth) / 2, behavior: 'smooth' });
     $('#angleGuide').textContent = a.guidance || 'Fill the frame with this view.';
-    $('#angleParts').innerHTML = a.parts.length ? a.parts.map((p) => { const c = splitCheck(p); return `<li>${esc(c.name)}${c.critical ? '<span class="crit-dot">critical</span>' : ''}</li>`; }).join('') : '<li>Extra evidence photo, no checks.</li>';
+    $('#angleParts').innerHTML = a.of ? `<li>Another photo of <b>${esc(a.of)}</b> – the AI uses every photo of this view.</li>` : a.parts.length ? a.parts.map((p) => { const c = splitCheck(p); return `<li>${esc(c.name)}${c.critical ? '<span class="crit-dot">critical</span>' : ''}</li>`; }).join('') : '<li>Extra evidence photo, no checks.</li>';
     $('#capThumbs').innerHTML = cur.angles.map((x, i) => { const s = cur.shots[x.name]; return `<button type="button" class="${i === P.idx ? 'cur' : ''}" data-i="${i}" aria-label="${esc(x.name)}">${s ? `<img src="${esc(s.src)}" alt="" />` : `<span class="empty-th" style="position:static;background:none;font-size:1rem">${i + 1}</span>`}<span>${esc(x.name)}</span></button>`; }).join('');
     $$('#capThumbs button').forEach((b) => b.addEventListener('click', () => { P.idx = +b.dataset.i; P.viewSince = performance.now(); renderCapture(); }));
     $('#capPreview').hidden = !shot; capCanvas.hidden = Boolean(shot);
@@ -808,9 +829,10 @@
     $('#btnShoot').hidden = Boolean(shot); $('#lblUpload').hidden = Boolean(shot);
     $('#btnRetake').hidden = !shot;
     $('#btnNext').hidden = !shot || done === total;
+    $('#btnMore').hidden = !shot || nPhotos >= MAX_PHOTOS;
     const ev = $('#btnEvaluate');
     ev.disabled = done === 0;
-    ev.textContent = done === total ? 'Check photos and get result' : `Check photos (${done} of ${total})`;
+    ev.textContent = done === total ? `Check ${nPhotos} photo${nPhotos === 1 ? '' : 's'} and get result` : `Check photos (${done} of ${total} views)`;
   }
   function flash(el) { el.classList.remove('go'); void el.offsetWidth; el.classList.add('go'); navigator.vibrate?.(30); }
   $('#btnShoot').addEventListener('click', async () => {
@@ -830,26 +852,44 @@
     cur.result = null;
     renderCapture();
     // move on to the next view without a photo
-    const next = cur.angles.findIndex((x, i) => i > P.idx && !cur.shots[x.name]);
+    const next = a.of ? -1 : cur.angles.findIndex((x, i) => i > P.idx && !x.of && !cur.shots[x.name]);
     if (next >= 0) setTimeout(() => { if (state.view === 'capture') { P.idx = next; P.viewSince = performance.now(); renderCapture(); } }, 700);
   });
-  $('#fileInput').addEventListener('change', (e) => {
-    const f = e.target.files?.[0]; e.target.value = '';
-    if (!f || !f.type.startsWith('image/')) { if (f) toast('Choose an image file.', true); return; }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const a = state.cur.angles[P.idx];
-      state.cur.shots[a.name] = { src: await shrinkDataUrl(reader.result), custom: true, ts: new Date().toISOString(), quality: { ok: true } };
-      renderCapture();
-    };
-    reader.readAsDataURL(f);
+  $('#fileInput').addEventListener('change', async (e) => {
+    const files = [...(e.target.files || [])].filter((f) => f.type.startsWith('image/')); e.target.value = '';
+    if (!files.length) { toast('Choose image files.', true); return; }
+    const cur = state.cur;
+    const room = MAX_PHOTOS - photoCount(cur) + (cur.shots[cur.angles[P.idx].name] ? 0 : 1) - 1;
+    if (files.length > room + 1) toast(`Only ${room + 1} more photo${room ? 's' : ''} fit (max ${MAX_PHOTOS}).`, true);
+    const read = (f) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(f); });
+    let idx = P.idx;
+    for (const [k, f] of files.slice(0, room + 1).entries()) {
+      const data = await read(f); if (!data) continue;
+      if (k > 0 || cur.shots[cur.angles[idx].name]) idx = addSubPhoto(cur, idx);
+      cur.shots[cur.angles[idx].name] = { src: await shrinkDataUrl(data), custom: true, ts: new Date().toISOString(), quality: { ok: true } };
+    }
+    P.idx = idx; renderCapture();
+    if (files.length > 1) toast(`${Math.min(files.length, room + 1)} photos added to "${baseName(cur.angles[idx])}"`);
   });
-  $('#btnRetake').addEventListener('click', () => { const a = state.cur.angles[P.idx]; delete state.cur.shots[a.name]; P.viewSince = performance.now(); renderCapture(); });
+  $('#btnRetake').addEventListener('click', () => {
+    const cur = state.cur; const a = cur.angles[P.idx];
+    delete cur.shots[a.name];
+    if (a.of && !confirm('Remove this extra photo? (Cancel = take it again)')) { P.viewSince = performance.now(); renderCapture(); return; }
+    if (a.of) { cur.angles.splice(P.idx, 1); P.idx = Math.max(0, P.idx - 1); }
+    P.viewSince = performance.now(); renderCapture();
+  });
   $('#btnNext').addEventListener('click', () => {
     const cur = state.cur;
     const n = cur.angles.findIndex((x, i) => i > P.idx && !cur.shots[x.name]);
     const any = cur.angles.findIndex((x) => !cur.shots[x.name]);
     P.idx = n >= 0 ? n : any >= 0 ? any : P.idx; P.viewSince = performance.now(); renderCapture();
+  });
+  $('#btnMore').addEventListener('click', () => {
+    const cur = state.cur;
+    if (photoCount(cur) >= MAX_PHOTOS) { toast(`Up to ${MAX_PHOTOS} photos per inspection.`, true); return; }
+    dropEmptySubs(cur);
+    const idx = cur.angles.findIndex((a) => a.name === cur.angles[Math.min(P.idx, cur.angles.length - 1)]?.name);
+    P.idx = addSubPhoto(cur, idx >= 0 ? idx : P.idx); P.viewSince = performance.now(); renderCapture();
   });
   $('#btnExtra').addEventListener('click', () => {
     const name = prompt('Name for the extra photo (e.g. "Close-up of damage"):');
@@ -864,6 +904,7 @@
   });
   $('#btnEvaluate').addEventListener('click', async () => {
     const cur = state.cur;
+    dropEmptySubs(cur);
     const missingViews = cur.angles.filter((a) => !cur.shots[a.name] && a.parts.length);
     if (missingViews.length && !confirm(`No photo yet for: ${missingViews.map((a) => a.name).join(', ')}.\nTheir checks will be marked Not OK. Check anyway?`)) return;
     if (aiLive()) {
@@ -1470,7 +1511,7 @@
       const shot = rec.shots[g];
       if (!rows.length && !shot) return '';
       const okN = rows.filter((c) => c.status === 'present').length;
-      return `<div class="check-group"><div class="cg-head ${g === ANY ? 'solo' : ''}">${g === ANY ? '' : annoHtml(rec, g, shot)}<div><h3>${esc(g)}</h3><p>${rows.length ? `${okN} of ${rows.length} OK` : (rec.angles.find((x) => x.name === g)?.live ? 'Live scan frame – boxes show what the AI found here' : 'Extra photo')}</p>
+      return `<div class="check-group"><div class="cg-head ${g === ANY ? 'solo' : ''}">${g === ANY ? '' : annoHtml(rec, g, shot)}<div><h3>${esc(g)}</h3><p>${rows.length ? `${okN} of ${rows.length} OK` : (rec.angles.find((x) => x.name === g)?.live ? 'Live scan frame – boxes show what the AI found here' : rec.angles.find((x) => x.name === g)?.of ? `More of ${esc(rec.angles.find((x) => x.name === g).of)} – boxes show what the AI found on this photo` : 'Extra photo')}</p>
         ${rows.length ? `<ul class="plist">${rows.map(partRow).join('')}</ul>` : ''}</div></div></div>`;
     }).join('');
 
@@ -1902,19 +1943,19 @@
   async function evaluateWithAi(cur) {
     const views = cur.angles.filter((a) => cur.shots[a.name]);
     const photos = [];
-    for (const a of views) photos.push({ view: a.name, image: await toJpeg(cur.shots[a.name].src) });
+    for (const a of views.slice(0, MAX_PHOTOS)) photos.push({ view: baseName(a), angle: a.name, image: await toJpeg(cur.shots[a.name].src) });
     const list = aiChecklist(cur);
     const overlay = analyseStart(Object.values(cur.shots)[0]?.src, [`Sending ${photos.length} photo${photos.length === 1 ? '' : 's'} to the AI`, `Checking ${list.length} points`, aiSettings().verify ? 'Second check of every OK' : 'Reading the answer', 'Building the result']);
     try {
       const j = await aiCall('evaluate', {
         item: cur.typeName, description: cur.description, assetId: cur.asset.id, location: cur.asset.location, verify: aiSettings().verify,
-        photos, checks: list.map((c) => ({ id: c.id, view: c.group, name: c.name, rule: c.rule, critical: c.critical })),
+        photos: photos.map((p) => ({ view: p.view, image: p.image })), checks: list.map((c) => ({ id: c.id, view: c.group, name: c.name, rule: c.rule, critical: c.critical })),
       });
       const res = j.result;
       const byId = new Map(res.checks.map((c) => [c.id, c]));
       const rows = list.map((c) => {
         const r = byId.get(c.id) || { status: 'unclear', evidence: 'Not assessed' };
-        const photoView = r.photo ? photos[r.photo - 1]?.view : null;
+        const photoView = r.photo ? photos[r.photo - 1]?.angle : null; // the exact photo the evidence is on
         const row = { id: uid(), group: c.group, part: c.part, critical: c.critical, status: r.status, note: r.evidence, box: photoView ? r.box : null };
         if (c.group !== ANY && !cur.shots[c.group]) Object.assign(row, { status: 'missing', note: 'This view was not photographed', box: null });
         if (photoView && photoView !== c.group) row.foundIn = photoView;
@@ -1924,10 +1965,10 @@
       // second pass: mark every OK / Not OK on its own photo (much more accurate positions)
       if (aiSettings().precise) {
         overlay.label('Marking the findings on each photo');
-        const groups = photos.map((ph) => ({ view: ph.view, image: ph.image, rows: rows.filter((r) => (r.status === 'present' || r.status === 'missing') && (r.foundIn || r.group) === ph.view) }));
+        const groups = photos.map((ph) => ({ view: ph.view, image: ph.image, rows: rows.filter((r) => (r.status === 'present' || r.status === 'missing') && (r.foundIn || r.group) === ph.angle) }));
         await locateFindings(cur.typeName, groups, j.info?.provider);
       }
-      const ai = { ...res, defects: res.defects.map((d) => ({ ...d, view: d.photo ? photos[d.photo - 1]?.view : '' })) };
+      const ai = { ...res, defects: res.defects.map((d) => ({ ...d, view: d.photo ? photos[d.photo - 1]?.angle : '' })) };
       if (res.item_matches === false) ai.summary = `The photos do not look like a ${cur.typeName.toLowerCase()} (AI saw: ${res.item_identified}). ${ai.summary}`;
       await overlay.finish();
       return buildAiResult(cur, rows, ai, { verified: j.verified, info: j.info });
@@ -2509,7 +2550,7 @@
       if (!$('#edIdLabel').value.trim() && r.idLabel) $('#edIdLabel').value = r.idLabel;
       $('#edSafety').checked = !!r.safety;
       const n = r.angles.reduce((k, v) => k + v.checks.length, 0) + r.general.length;
-      $('#edAiNote').textContent = `AI (${j.info.label}) created ${r.angles.length} views and ${n} checks${r.basedOn ? ' – ' + r.basedOn : ''}. Review them, then save.`;
+      $('#edAiNote').textContent = `AI (${j.info.label}) created ${r.angles.length} views and ${n} checks${r.basedOn ? ' – ' + r.basedOn : ''}.${r.partial ? ' The document is long, so the answer was trimmed to the most important checks – add any missing ones by hand.' : ''} Review them, then save.`;
       toast(`Checklist created: ${r.angles.length} views, ${n} checks`);
       track('checklist_ai', { name: item, files: ok.length, views: r.angles.length, checks: n });
     } catch (e) {

@@ -107,6 +107,13 @@ async function postJson(url, headers, body, timeoutMs) {
   } finally { clearTimeout(t); }
 }
 
+function truncated(text, who) {
+  const e = new Error(`${who}: the answer was cut off (too long).`);
+  e.code = 'truncated'; e.partial = text || ''; e.status = 502;
+  return e;
+}
+const isReasoningOpenAI = (m) => /^(gpt-5|o\d)/i.test(m || '');
+
 export async function callVision(cfg, { system, text, images = [], docs = [], maxTokens = 4000, json = true, timeoutMs = 55000 }) {
   const p = cfg.provider;
   if (docs.length && p === 'azure') { const e = new Error('It cannot read PDF files directly. Use a PDF with selectable text, or paste the text into the description.'); e.status = 400; throw e; }
@@ -116,21 +123,32 @@ export async function callVision(cfg, { system, text, images = [], docs = [], ma
     const j = await postJson(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       { 'x-goog-api-key': cfg.apiKey },
       { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: Math.max(maxTokens, 8192), ...(json ? { responseMimeType: 'application/json' } : {}) } }, timeoutMs);
-    const out = (j?.candidates?.[0]?.content?.parts || []).map((x) => x.text || '').join('');
+        generationConfig: { temperature: 0.1, maxOutputTokens: Math.max(maxTokens * 2, 16384), ...(json ? { responseMimeType: 'application/json' } : {}) } }, timeoutMs);
+    const out = (j?.candidates?.[0]?.content?.parts || []).filter((x) => !x.thought).map((x) => x.text || '').join('');
+    if (j?.candidates?.[0]?.finishReason === 'MAX_TOKENS') throw truncated(out, 'Gemini');
     if (!out) throw new Error(j?.promptFeedback?.blockReason ? `Blocked by Gemini: ${j.promptFeedback.blockReason}` : 'Gemini returned an empty answer.');
     return out;
   }
   if (p === 'anthropic') {
     const model = cfg.model || PROVIDERS.anthropic.defaultModel;
     const content = [...docs.map((d) => ({ type: 'document', source: { type: 'base64', media_type: d.mime, data: d.data } })), ...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: mime(im), data: b64(im) } })), { type: 'text', text }];
-    const j = await postJson('https://api.anthropic.com/v1/messages', { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
-      { model, max_tokens: maxTokens, system: system + (json ? '\nReply with one JSON object only, no other text.' : ''), messages: [{ role: 'user', content }] }, timeoutMs);
-    return (j?.content || []).map((x) => x.text || '').join('');
+    const body = { model, max_tokens: Math.max(maxTokens, 4096), system, messages: [{ role: 'user', content }] };
+    if (json) {
+      // Claude has no JSON mode: a forced tool call makes it return one valid JSON object
+      body.tools = [{ name: 'submit_answer', description: 'Submit the complete answer in the JSON structure described in the request.', input_schema: { type: 'object', additionalProperties: true } }];
+      body.tool_choice = { type: 'tool', name: 'submit_answer' };
+    }
+    const j = await postJson('https://api.anthropic.com/v1/messages', { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' }, body, timeoutMs);
+    const tool = (j?.content || []).find((x) => x.type === 'tool_use');
+    const out = tool ? JSON.stringify(tool.input ?? {}) : (j?.content || []).map((x) => x.text || '').join('');
+    if (j?.stop_reason === 'max_tokens') throw truncated(out, 'Claude');
+    return out;
   }
   // OpenAI and Azure OpenAI share the chat-completions format
   const messages = [{ role: 'system', content: system }, { role: 'user', content: [{ type: 'text', text }, ...docs.map((d) => ({ type: 'file', file: { filename: d.name || 'document.pdf', file_data: `data:${d.mime};base64,${d.data}` } })), ...images.map((im) => ({ type: 'image_url', image_url: { url: im, detail: 'high' } }))] }];
-  let url, headers, body = { messages, max_completion_tokens: maxTokens, ...(json ? { response_format: { type: 'json_object' } } : {}) };
+  const reasoning = p === 'openai' && isReasoningOpenAI(cfg.model || PROVIDERS.openai.defaultModel);
+  // GPT-5 / o-series spend part of the budget on hidden reasoning: give more room and keep reasoning short
+  let url, headers, body = { messages, max_completion_tokens: reasoning ? Math.max(maxTokens * 2, 16000) : maxTokens, ...(reasoning ? { reasoning_effort: 'low' } : {}), ...(json ? { response_format: { type: 'json_object' } } : {}) };
   if (p === 'azure') {
     url = `${cfg.endpoint}/openai/deployments/${encodeURIComponent(cfg.deployment)}/chat/completions?api-version=${encodeURIComponent(cfg.apiVersion || '2024-10-21')}`;
     headers = { 'api-key': cfg.apiKey };
@@ -141,24 +159,55 @@ export async function callVision(cfg, { system, text, images = [], docs = [], ma
   }
   try {
     const j = await postJson(url, headers, body, timeoutMs);
-    return j?.choices?.[0]?.message?.content || '';
+    const out = j?.choices?.[0]?.message?.content || '';
+    if (j?.choices?.[0]?.finish_reason === 'length') throw truncated(out, p === 'azure' ? 'Azure OpenAI' : 'OpenAI');
+    return out;
   } catch (e) {
+    if (e.code === 'truncated') throw e;
     // older models / API versions: retry with max_tokens instead of max_completion_tokens
-    if (e.status === 400 && /max_completion_tokens/i.test(e.message)) {
-      const { max_completion_tokens, ...rest } = body;
-      const j = await postJson(url, headers, { ...rest, max_tokens: maxTokens }, timeoutMs);
-      return j?.choices?.[0]?.message?.content || '';
-    }
-    throw e;
+    let retry = null;
+    if (e.status === 400 && /reasoning_effort/i.test(e.message)) { const { reasoning_effort, ...rest } = body; retry = rest; }
+    else if (e.status === 400 && /max_completion_tokens/i.test(e.message)) { const { max_completion_tokens, reasoning_effort, ...rest } = body; retry = { ...rest, max_tokens: maxTokens }; }
+    if (!retry) throw e;
+    const j = await postJson(url, headers, retry, timeoutMs);
+    const out = j?.choices?.[0]?.message?.content || '';
+    if (j?.choices?.[0]?.finish_reason === 'length') throw truncated(out, p === 'azure' ? 'Azure OpenAI' : 'OpenAI');
+    return out;
   }
 }
 
-export function parseJson(text) {
+// Parse a model's JSON answer. Handles ```json fences, text around the object, trailing commas,
+// and answers that were cut off: everything up to the last complete item is kept.
+export function parseJson(text, { allowPartial = true } = {}) {
   let t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
-  try { return JSON.parse(t); } catch { /* fall through */ }
-  const a = t.indexOf('{'), b = t.lastIndexOf('}');
-  if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch { /* fall through */ } }
+  const tryParse = (s) => { try { return JSON.parse(s); } catch { try { return JSON.parse(s.replace(/,\s*([}\]])/g, '$1')); } catch { return undefined; } } };
+  let v = tryParse(t);
+  if (v !== undefined) return v;
+  const start = t.indexOf('{');
+  if (start < 0) throw new Error('The AI answer was not valid JSON. Try again.');
+  t = t.slice(start);
+  const end = t.lastIndexOf('}');
+  if (end > 0) { v = tryParse(t.slice(0, end + 1)); if (v !== undefined) return v; }
+  if (allowPartial) { v = repairCut(t); if (v !== undefined) { v.__partial = true; return v; } }
   throw new Error('The AI answer was not valid JSON. Try again.');
+}
+function repairCut(t) {
+  // walk the text; at every point where a value has just closed, remember how to close the open brackets
+  const cuts = [];
+  const stack = []; let inStr = false, esc = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') inStr = true;
+    else if (ch === '{' || ch === '[') stack.push(ch);
+    else if (ch === '}' || ch === ']') { stack.pop(); cuts.push([i + 1, stack.slice()]); }
+  }
+  for (let k = cuts.length - 1; k >= 0 && k >= cuts.length - 400; k--) {
+    const [pos, st] = cuts[k];
+    const close = st.slice().reverse().map((c) => (c === '{' ? '}' : ']')).join('');
+    try { return JSON.parse(t.slice(0, pos).replace(/,\s*$/, '') + close); } catch { /* try an earlier cut */ }
+  }
+  return undefined;
 }
 
 export function friendlyError(e, cfg) {
@@ -227,6 +276,7 @@ Asset: ${p.assetId || '-'} at ${p.location || '-'}
 Photos (in order):
 ${photos}
 
+A view can have several photos (same view name): judge each check using ALL photos of its view and pick the one that shows it best.
 Checklist (id | view | requirement). A check with view "Any view" may be judged from any photo:
 ${checks}
 
@@ -305,6 +355,8 @@ Rules:
 - "rule" = what must be visibly true, in plain English (add the clause / section from the document when known).
 - Mark checks critical when failing them is a serious safety, hygiene or legal risk.
 - "general" = checks that can be seen in any view (0-4 checks).
+- Keep it compact so the answer is never cut off: at most 8 views, at most 8 checks per view, names under 8 words,
+  rules under 25 words. For a long document, pick the requirements that matter most and can be photographed.
 
 Return JSON:
 { "description": "one line describing this inspection", "idLabel": "name of the ID field (e.g. FSSAI licence no., Asset ID)",

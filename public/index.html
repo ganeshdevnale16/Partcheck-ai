@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=6.2.0" />
+  <link rel="stylesheet" href="styles.css?v=6.4.0" />
 </head>
 <body class="locked">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -255,11 +255,12 @@
         <ul class="checks-mini" id="angleParts"></ul>
       </div>
       <div class="cam-controls">
-        <label class="round-btn" id="lblUpload" aria-label="Choose from gallery"><svg><use href="#i-upload"/></svg><input type="file" id="fileInput" accept="image/*" /></label>
+        <label class="round-btn" id="lblUpload" aria-label="Choose from gallery"><svg><use href="#i-upload"/></svg><input type="file" id="fileInput" accept="image/*" multiple /></label>
         <button type="button" class="round-btn" id="btnRetake" hidden aria-label="Retake"><svg><use href="#i-flip"/></svg></button>
         <button type="button" class="shutter" id="btnShoot" aria-label="Take photo"><span></span></button>
+        <button type="button" class="round-btn wide" id="btnMore" hidden aria-label="Add another photo of this view">+ Same view</button>
         <button type="button" class="round-btn" id="btnNext" hidden aria-label="Next view"><svg><use href="#i-chev"/></svg></button>
-        <button type="button" class="round-btn" id="btnExtra" aria-label="Add an extra photo">+</button>
+        <button type="button" class="round-btn" id="btnExtra" aria-label="Add a new named view" title="Add a new named view">+</button>
       </div>
       <button type="button" class="btn btn-hivis btn-block" id="btnEvaluate">Check photos</button>
     </section>
@@ -453,10 +454,10 @@
   <div id="printArea"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/qr.js?v=6.2.0"></script>
-  <script src="js/demo-data.js?v=6.2.0"></script>
-  <script src="js/media.js?v=6.2.0"></script>
-  <script src="js/workspace.js?v=6.2.0"></script>
-  <script src="js/app.js?v=6.2.0"></script>
+  <script src="js/qr.js?v=6.4.0"></script>
+  <script src="js/demo-data.js?v=6.4.0"></script>
+  <script src="js/media.js?v=6.4.0"></script>
+  <script src="js/workspace.js?v=6.4.0"></script>
+  <script src="js/app.js?v=6.4.0"></script>
 </body>
 </html>
