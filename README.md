@@ -1,7 +1,14 @@
-# Inspection AI v6.8
+# Inspection AI v6.9
 
 Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
 Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
+
+## What's new in v6.9
+- Checklists without sections: if the AI grouping fails it is retried once and the real error is shown.
+- The fallback no longer makes blocks of rows ("Checks R01–R08"); it groups questions into real views by keywords
+  (Licence & records, Receiving, Storage, Preparation & cooking, Staff & hygiene, Cleaning & pests, Allergens,
+  Service & packaging, Premises & equipment). Every row is still kept exactly once.
+- AI-made views with more than 15 questions are split into parts of about 12.
 
 ## What's new in v6.8 – views for checklists without sections
 Uploaded Excel / CSV checklists are split into views in this order:

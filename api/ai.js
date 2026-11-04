@@ -127,6 +127,10 @@ export default async function handler(req, res) {
         const host = (prev && views.find((v) => v.refs.includes(prev.ref))) || views[views.length - 1];
         host.refs.splice(prev ? host.refs.indexOf(prev.ref) + 1 : host.refs.length, 0, r.ref); seen.add(r.ref);
       });
+      // no giant views: split anything over 15 rows into parts of about 12
+      const sized = [];
+      views.forEach((v) => { if (v.refs.length <= 15) sized.push(v); else { const parts = Math.ceil(v.refs.length / 12); for (let k = 0; k < parts; k++) sized.push({ ...v, name: `${v.name} ${k + 1}`, refs: v.refs.slice(Math.round((k * v.refs.length) / parts), Math.round(((k + 1) * v.refs.length) / parts)) }); } });
+      views.length = 0; views.push(...sized);
       const names = new Set();
       views.forEach((v) => { let n = v.name, k = 2; while (names.has(n.toLowerCase())) n = `${v.name} ${k++}`; v.name = n; names.add(n.toLowerCase()); });
       return res.json({ ok: true, info: publicInfo(cfg), result: { views } });

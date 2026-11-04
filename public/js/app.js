@@ -2729,6 +2729,39 @@
     const s2 = w.slice(0, 8).join(' ') + (w.length > 8 ? '…' : '');
     return s2.charAt(0).toUpperCase() + s2.slice(1);
   };
+  // fallback when the AI cannot group a flat checklist: real views by keywords (every row exactly once)
+  const KEYWORD_VIEWS = [
+    ['Licence & records', /licen[cs]e|registration|\brecords?\b|register|document|certificat|\breports?\b|\blogs?\b|schedule|\bplan\b|policy|procedure|\bsop\b|audit|training|trained|matrix|complaint|recall|traceab|supervisor|responsib|escalat|closure|corrective|non-?complian|statutory|management/i],
+    ['Allergens', /allerg|gluten|\bnuts?\b|peanut|dietary/i],
+    ['Receiving', /deliver|receiv|supplier|vendor|incoming|vehicle|transport/i],
+    ['Storage', /\bstor(e|ed|es|age)\b|fridge|refrigerat|freez|chill|cold room|\bshel(f|ves)\b|\bracks?\b|\bstock\b|expir|fefo|fifo|container|label/i],
+    ['Preparation & cooking', /cook|prepar|thaw|reheat|hot.?h[eo]ld|cooling|cooled|core temp|probe|fry|vegetable|fruit|\braw\b|ready.to.eat|tasting/i],
+    ['Staff & hygiene', /hand.?wash|wash(ing)? hands|staff|employee|worker|handler|uniform|hair|apron|glove|jewel|wound|\bcuts?\b|illness|smok|spit|\bppe\b|helmet|harness/i],
+    ['Cleaning & pests', /clean|sanitis|sanitiz|disinfect|pest|rodent|insect|\bfl(y|ies)\b|drain|grease|waste|\bbins?\b|garbage|dish/i],
+    ['Service & packaging', /buffet|serv(e|ed|ice|ing)\b|packag|\bpacked\b|dispatch|menu|counter|catering/i],
+    ['Premises & equipment', /floor|\bwalls?\b|ceiling|\bdoors?\b|window|light|ventilat|exhaust|water|toilet|equipment|utensil|worktop|surface|electric|\bfire\b|extinguish|machine/i],
+  ];
+  function keywordGroups(rows) {
+    const map = new Map();
+    // score every view by how many of its words the question uses; record words count half (they are often mentioned in passing)
+    const score = (txt, re, name) => { const g = new RegExp(re.source, 'gi'); return (txt.match(g) || []).length * (name === 'Licence & records' ? 0.5 : 1); };
+    rows.forEach((r) => {
+      const txt = r.question;
+      let best = 'Other checks', top = 0;
+      KEYWORD_VIEWS.forEach(([name, re]) => { const sc = score(txt, re, name); if (sc > top) { top = sc; best = name; } });
+      if (!map.has(best)) map.set(best, []); map.get(best).push(r);
+    });
+    let groups = [...map].map(([name, rs]) => ({ name, rows: rs }));
+    if (groups.length < 2) {   // nothing matched: numbered parts, never one giant view
+      groups = [];
+      for (let k = 0; k < rows.length; k += 10) groups.push({ name: `Part ${groups.length + 1} (rows ${k + 1}–${Math.min(k + 10, rows.length)})`, rows: rows.slice(k, k + 10) });
+    }
+    // keep views a usable size: split very large ones
+    const out = [];
+    groups.forEach((g) => { if (g.rows.length <= 15) out.push(g); else for (let k = 0, n = 1; k < g.rows.length; k += 12, n++) out.push({ name: `${g.name} ${n}`, rows: g.rows.slice(k, k + 12) }); });
+    const order = new Map(KEYWORD_VIEWS.map(([n], i) => [n, i]));
+    return out.map((g) => ({ key: g.name, name: g.name, rows: g.rows })).sort((a, b) => (order.get(a.name.replace(/ \d+$/, '')) ?? 99) - (order.get(b.name.replace(/ \d+$/, '')) ?? 99));
+  }
   async function convertChecklist(item, description, cl) {
     let secs = cl.sections;
     let aiOff = false, failed = 0, info = null, groupedBy = cl.needsGrouping ? '' : 'file';
@@ -2736,18 +2769,21 @@
     if (cl.needsGrouping) {
       // no sections in the file: the AI groups the rows by where they are photographed (every row exactly once)
       overlay.label('Grouping the questions into views…');
-      try {
-        const j = await aiCall('group', { name: item, description, rows: cl.rows.map((r) => ({ ref: r.ref, text: r.question + (r.cells.length > 1 ? ' – ' + r.cells.filter((c) => c !== r.question).join(' · ').slice(0, 120) : '') })) });
-        const byRef = new Map(cl.rows.map((r) => [r.ref, r]));
+      const byRef = new Map(cl.rows.map((r) => [r.ref, r]));
+      const payload = { name: item, description, rows: cl.rows.map((r) => ({ ref: r.ref, text: r.question + (r.cells.length > 1 ? ' – ' + r.cells.filter((c) => c !== r.question).join(' · ').slice(0, 120) : '') })) };
+      let j = null, err = null;
+      for (let attempt = 0; attempt < 2 && !j; attempt++) {
+        try { j = await aiCall('group', payload); }
+        catch (e) { err = e; if (e.code === 'no_config' || e.status === 404 || e.status === 401 || e.status === 403) break; }
+      }
+      if (j) {
         secs = j.result.views.map((v) => ({ key: v.name, name: v.name, guidance: v.guidance, rows: v.refs.map((x) => byRef.get(x)).filter(Boolean) })).filter((v) => v.rows.length);
         info = j.info; groupedBy = 'ai';
-      } catch (e) {
-        if (e.code === 'no_config' || e.status === 404) aiOff = true;
-        // fallback: consecutive blocks of about 8 rows
-        const size = cl.rows.length <= 12 ? cl.rows.length : 8;
-        secs = [];
-        for (let k = 0; k < cl.rows.length; k += size) { const part = cl.rows.slice(k, k + size); secs.push({ key: `Checks ${part[0].ref}–${part[part.length - 1].ref}`, name: `Checks ${part[0].ref}–${part[part.length - 1].ref}`, rows: part }); }
-        groupedBy = 'blocks';
+      } else {
+        if (err && (err.code === 'no_config' || err.status === 404)) aiOff = true;
+        else toast(`The AI could not group the questions (${(err?.message || 'unknown error').slice(0, 120)}). Grouped them by keywords instead.`, true);
+        secs = keywordGroups(cl.rows);
+        groupedBy = 'keywords';
       }
     }
     const results = new Array(secs.length).fill(null);
@@ -2789,8 +2825,8 @@
     const n = views.reduce((t, v) => t + v.parts.length, 0);
     const nCrit = cl.rows.filter((r) => /critical/i.test(r.risk)).length;
     $('#edAiNote').textContent = aiOff
-      ? `No AI key is set up, so all ${n} items were taken directly from ${cl.file} (${views.length} views). An Admin can add a key to have the AI rewrite them as photo checks.`
-      : `Kept all ${n} items from ${cl.file} in ${views.length} views${groupedBy === 'ai' ? ' grouped by the AI' : groupedBy === 'blocks' ? ' (blocks of rows – the AI could not group them)' : ''}${info ? ` (AI: ${info.label})` : ''}. ${fromAi} rewritten by the AI as photo checks${fromFile ? `, ${fromFile} taken directly from your file` : ''}.${nCrit ? ` ${nCrit} rows with risk "Critical" are marked critical.` : ''} Review them, then save.`;
+      ? `No AI key is set up, so all ${n} items were taken directly from ${cl.file} and grouped into ${views.length} views by keywords. An Admin can add a key to have the AI rewrite them as photo checks.`
+      : `Kept all ${n} items from ${cl.file} in ${views.length} views${groupedBy === 'ai' ? ' grouped by the AI' : groupedBy === 'keywords' ? ' grouped by keywords (the AI could not group them)' : ''}${info ? ` (AI: ${info.label})` : ''}. ${fromAi} rewritten by the AI as photo checks${fromFile ? `, ${fromFile} taken directly from your file` : ''}.${nCrit ? ` ${nCrit} rows with risk "Critical" are marked critical.` : ''} Review them, then save.`;
     if (failed && !aiOff) toast(`${failed} section${failed > 1 ? 's' : ''} could not be rewritten by the AI – those rows were taken from your file.`, true);
     else toast(`Checklist created: ${views.length} views, ${n} checks`);
     track('checklist_converted', { items: n, views: views.length, ai: !aiOff });
