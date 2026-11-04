@@ -1,7 +1,16 @@
-# Inspection AI v6.6
+# Inspection AI v6.7
 
 Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
 Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
+
+## What's new in v6.7 – no photo limit
+- Take or upload any number of photos (the 12-photo limit is gone).
+- Real-AI checks run in batches: one view at a time (max 8 photos / 3 MB per request, under Vercel's 4.5 MB limit),
+  3 requests in parallel, merged into one result (Not OK in any photo of a view wins). A failed batch is retried once;
+  if it still fails only that view's checks are marked Unclear and you are told.
+- Precise marking runs at most 4 photos at a time.
+- Saved-report photos are kept in IndexedDB (hundreds of MB) instead of localStorage (~5 MB), so big reports are no
+  longer dropped. Export all (JSON) still includes the photos.
 
 ## What's new in v6.6
 - Built-in inspection type **FSSAI food safety audit**: 11 views, 77 checks (A01–K06) from the Food Safety

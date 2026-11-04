@@ -112,6 +112,41 @@
   const saveTypes = () => LS.set('ia_types', state.types);
   const saveAssets = () => { window.DEMO_SWL = Object.fromEntries(state.assets.filter((a) => a.swl).map((a) => [a.id, a.swl])); return LS.set('ia_assets', state.assets); };
   const countChecks = (t) => t.angles.reduce((n, a) => n + a.parts.length, 0) + (t.general_parts || []).length;
+  // ---------- saved-report photos live in IndexedDB (large), reports keep only a reference "idb:<key>" ----------
+  const PhotoDB = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((res, rej) => {
+      if (!window.indexedDB) return rej(new Error('no IndexedDB'));
+      const r = indexedDB.open('ia_photos', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('p');
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+    const run = async (mode, fn) => { const db = await open(); return new Promise((res, rej) => { const t = db.transaction('p', mode); const req = fn(t.objectStore('p')); t.oncomplete = () => res(req?.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); }); };
+    return {
+      put: (k, v) => run('readwrite', (st) => st.put(v, k)),
+      get: (k) => run('readonly', (st) => st.get(k)).catch(() => null),
+      del: (k) => run('readwrite', (st) => st.delete(k)).catch(() => null),
+      keys: () => run('readonly', (st) => st.getAllKeys()).catch(() => []),
+      clear: () => run('readwrite', (st) => st.clear()).catch(() => null),
+    };
+  })();
+  const isIdb = (src) => typeof src === 'string' && src.startsWith('idb:');
+  async function photosToStore(rec) {
+    for (const [name, sh] of Object.entries(rec.shots || {})) {
+      if (typeof sh.src !== 'string' || !sh.src.startsWith('data:') || sh.src.length < 20000) continue;
+      const key = `${rec.id}:${name}`;
+      try { await PhotoDB.put(key, sh.src); sh.src = 'idb:' + key; } catch { return; /* keep photos inline if IndexedDB is not available */ }
+    }
+  }
+  async function photosFromStore(rec) {
+    await Promise.all(Object.values(rec.shots || {}).map(async (sh) => { if (isIdb(sh.src)) { const v = await PhotoDB.get(sh.src.slice(4)); if (v) sh.src = v; } }));
+    return rec;
+  }
+  async function hydrateImgs(root) { await Promise.all($$('img[data-idb]', root).map(async (img) => { const v = await PhotoDB.get(img.dataset.idb); if (v) img.src = v; img.removeAttribute('data-idb'); })); }
+  async function cleanPhotoStore() {
+    const ids = new Set(state.history.map((h) => h.id));
+    for (const k of await PhotoDB.keys()) if (!ids.has(String(k).split(':')[0])) await PhotoDB.del(k);
+  }
   function saveHistory() {
     let ok = LS.set('ia_history', state.history);
     while (!ok && state.history.length > 2) { state.history.pop(); ok = LS.set('ia_history', state.history); }
@@ -533,13 +568,14 @@
     const sub = [h.typeName, a.location, ago(h.result?.evaluatedAt || h.createdAt), h.meta?.inspector].filter(Boolean).join(', ');
     const first = Object.values(h.shots || {})[0];
     const thumb = first?.src;
+    const thumbIdb = isIdb(thumb) ? thumb.slice(4) : '';
     return `<button type="button" class="row" data-open="${esc(h.id)}">
       <span class="minitag ${tag}" aria-label="${TAG_LABEL[tag]}">${tag === 'NONE' ? '–' : tag[0]}</span>
-      ${thumb ? `<img class="row-thumb" src="${esc(thumb)}" ${first.key ? `data-key="${esc(first.key)}"` : ''} alt="" />` : ''}
+      ${thumb ? (thumbIdb ? `<img class="row-thumb" data-idb="${esc(thumbIdb)}" alt="" />` : `<img class="row-thumb" src="${esc(thumb)}" ${first.key ? `data-key="${esc(first.key)}"` : ''} alt="" />`) : ''}
       <span class="row-main"><span class="row-title">${esc(a.id || h.typeName)} ${h.sample ? '<span class="pill sample">Sample</span>' : ''}</span><span class="row-sub">${esc(sub)}</span></span>
       <svg class="row-chev" aria-hidden="true"><use href="#i-chev"/></svg></button>`;
   }
-  function wireRows(box) { $$('[data-open]', box).forEach((b) => b.addEventListener('click', () => openHistory(b.dataset.open))); }
+  function wireRows(box) { $$('[data-open]', box).forEach((b) => b.addEventListener('click', () => openHistory(b.dataset.open))); hydrateImgs(box); }
 
   RENDER.home = () => {
     const p = state.profile;
@@ -786,7 +822,7 @@
   });
 
   // ---------- several photos per view: extra photos are stored as "sub-views" (of = the main view) ----------
-  const MAX_PHOTOS = 12;
+  const MANY_PHOTOS = 40; // no limit – just a heads-up that checking takes longer
   const baseName = (a) => a.of || a.name;
   const photoCount = (cur) => cur.angles.filter((a) => cur.shots[a.name]).length;
   function addSubPhoto(cur, idx) {
@@ -829,7 +865,7 @@
     $('#btnShoot').hidden = Boolean(shot); $('#lblUpload').hidden = Boolean(shot);
     $('#btnRetake').hidden = !shot;
     $('#btnNext').hidden = !shot || done === total;
-    $('#btnMore').hidden = !shot || nPhotos >= MAX_PHOTOS;
+    $('#btnMore').hidden = !shot;
     const ev = $('#btnEvaluate');
     ev.disabled = done === 0;
     ev.textContent = done === total ? `Check ${nPhotos} photo${nPhotos === 1 ? '' : 's'} and get result` : `Check photos (${done} of ${total} views)`;
@@ -859,8 +895,7 @@
     const files = [...(e.target.files || [])].filter((f) => f.type.startsWith('image/')); e.target.value = '';
     if (!files.length) { toast('Choose image files.', true); return; }
     const cur = state.cur;
-    const room = MAX_PHOTOS - photoCount(cur) + (cur.shots[cur.angles[P.idx].name] ? 0 : 1) - 1;
-    if (files.length > room + 1) toast(`Only ${room + 1} more photo${room ? 's' : ''} fit (max ${MAX_PHOTOS}).`, true);
+    const room = files.length - 1;
     const read = (f) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(f); });
     let idx = P.idx;
     for (const [k, f] of files.slice(0, room + 1).entries()) {
@@ -886,7 +921,7 @@
   });
   $('#btnMore').addEventListener('click', () => {
     const cur = state.cur;
-    if (photoCount(cur) >= MAX_PHOTOS) { toast(`Up to ${MAX_PHOTOS} photos per inspection.`, true); return; }
+
     dropEmptySubs(cur);
     const idx = cur.angles.findIndex((a) => a.name === cur.angles[Math.min(P.idx, cur.angles.length - 1)]?.name);
     P.idx = addSubPhoto(cur, idx >= 0 ? idx : P.idx); P.viewSince = performance.now(); renderCapture();
@@ -1585,22 +1620,23 @@
     document.body.appendChild(lb);
   }
 
-  function saveToHistory(rec) {
+  async function saveToHistory(rec) {
     track('report_saved', { tag: rec.asset?.id, result: TAG_LABEL[resultTag(rec)], signedOff: !!rec.signoff?.done });
     rec.saved = true;
     rec.reportNo = rec.reportNo || reportNo(rec);
     const copy = { ...clone(rec), fromHistory: false };
+    await photosToStore(copy);
     if (copy.assetId == null && getAsset(copy.asset.id)) copy.assetId = copy.asset.id;
     state.history = [copy, ...state.history.filter((h) => h.id !== rec.id)];
     if (!saveHistory()) { toast('Device storage is full. Delete old reports in Settings.', true); return; }
     renderResult();
     toast(rec.assetId || getAsset(rec.asset.id) ? `Saved. Tag ${rec.asset.id} is now ${TAG_LABEL[resultTag(rec)]}.` : 'Inspection saved');
   }
-  function openHistory(id) {
+  async function openHistory(id) {
     const rec = state.history.find((h) => h.id === id);
     if (!rec) return;
     track('report_opened', { tag: rec.asset?.id, reportNo: rec.reportNo });
-    state.cur = { ...clone(rec), fromHistory: true, saved: true };
+    state.cur = await photosFromStore({ ...clone(rec), fromHistory: true, saved: true });
     renderResult();
     show('result');
   }
@@ -1735,12 +1771,17 @@
     if (!confirm('Reset the demo? Sample tags and the two sample reports are restored. Reports you saved are removed.')) return;
     state.types = clone(D.TYPES); saveTypes();
     state.history = [];
+    await PhotoDB.clear();
     await seed(true);
     seedSite(true);
     track('demo_reset'); toast('Demo reset'); RENDER.settings();
   });
-  $('#btnExportAll').addEventListener('click', () => { if (!state.history.length) return toast('Nothing to export yet.'); download(`inspections-${isoDay(Date.now())}.json`, JSON.stringify({ assets: state.assets, reports: state.history }, null, 2), 'application/json'); });
-  $('#btnClearHistory').addEventListener('click', () => { if (!confirm('Delete ALL reports from this device?')) return; state.history = []; saveHistory(); RENDER.settings(); toast('All reports deleted'); });
+  $('#btnExportAll').addEventListener('click', async () => {
+    if (!state.history.length) return toast('Nothing to export yet.');
+    const reports = await Promise.all(state.history.map((h) => photosFromStore(clone(h))));
+    download(`inspections-${isoDay(Date.now())}.json`, JSON.stringify({ assets: state.assets, reports }, null, 2), 'application/json');
+  });
+  $('#btnClearHistory').addEventListener('click', () => { if (!confirm('Delete ALL reports from this device?')) return; state.history = []; saveHistory(); PhotoDB.clear(); RENDER.settings(); toast('All reports deleted'); });
 
   function renderTypeList() {
     $('#typeList').innerHTML = state.types.map((t) => `<div class="type-row"><button type="button" class="row" data-edit-type="${esc(t.id)}">${typeIcon(t)}
@@ -1952,7 +1993,7 @@
   // targets: [{ id, row, view, image }] grouped per photo; updates row.box in place
   async function locateFindings(item, groups, provider) {
     const useGrid = provider && provider !== 'gemini';
-    await Promise.all(groups.map(async (g) => {
+    await runLimited(groups.map((g) => async () => {
       if (!g.rows.length) return;
       try {
         const image = useGrid ? await gridCopy(g.image) : g.image;
@@ -1963,26 +2004,75 @@
         const byId = new Map(j.result.items.map((t) => [t.id, t.box]));
         g.rows.forEach((r, i) => { r.box = byId.get('k' + (i + 1)) || null; r.located = true; });
       } catch { /* keep the first-pass boxes if marking fails */ }
-    }));
+    }), 4);
   }
 
-  // ---------- photo by photo: send every photo once, get the full checklist back ----------
+  // ---------- photo by photo: any number of photos, sent in batches (one view at a time) ----------
+  // A request may hold at most ~8 photos / 3 MB (Vercel body limit 4.5 MB), so the inspection is checked view by view,
+  // 3 requests in parallel, and the answers are merged. Not OK in any photo of a view wins over OK.
+  const BATCH_PHOTOS = 8, BATCH_BYTES = 3_000_000, BATCH_PARALLEL = 3;
+  async function runLimited(tasks, n) {
+    const out = new Array(tasks.length); let next = 0;
+    await Promise.all([...Array(Math.min(n, tasks.length))].map(async () => { while (next < tasks.length) { const k = next++; out[k] = await tasks[k](); } }));
+    return out;
+  }
   async function evaluateWithAi(cur) {
     const views = cur.angles.filter((a) => cur.shots[a.name]);
-    const photos = [];
-    for (const a of views.slice(0, MAX_PHOTOS)) photos.push({ view: baseName(a), angle: a.name, image: await toJpeg(cur.shots[a.name].src) });
     const list = aiChecklist(cur);
-    const overlay = analyseStart(Object.values(cur.shots)[0]?.src, [`Sending ${photos.length} photo${photos.length === 1 ? '' : 's'} to the AI`, `Checking ${list.length} points`, aiSettings().verify ? 'Second check of every OK' : 'Reading the answer', 'Building the result']);
+    if (views.length > MANY_PHOTOS) toast(`Checking ${views.length} photos – this can take a few minutes.`);
+    const overlay = analyseStart(Object.values(cur.shots)[0]?.src, [`Preparing ${views.length} photo${views.length === 1 ? '' : 's'}`, `Checking ${list.length} points view by view`, aiSettings().verify ? 'Second check of every OK' : 'Reading the answers', 'Marking findings and building the result']);
     try {
-      const j = await aiCall('evaluate', {
-        item: cur.typeName, description: cur.description, assetId: cur.asset.id, location: cur.asset.location, verify: aiSettings().verify,
-        photos: photos.map((p) => ({ view: p.view, image: p.image })), checks: list.map((c) => ({ id: c.id, view: c.group, name: c.name, rule: c.rule, critical: c.critical })),
-      });
-      const res = j.result;
-      const byId = new Map(res.checks.map((c) => [c.id, c]));
+      const photos = [];
+      for (const [k, a] of views.entries()) {
+        photos.push({ view: baseName(a), angle: a.name, image: await toJpeg(cur.shots[a.name].src) });
+        if (views.length > 6 && k % 4 === 3) overlay.label(`Preparing photos ${k + 1} of ${views.length}…`);
+      }
+      const anyChecks = list.filter((c) => c.group === ANY);
+      // batches: photos of one view together (split if too many / too large); extra named photos go with the "any view" checks
+      const byView = new Map();
+      photos.forEach((p) => { const key = cur.angles.find((a) => a.name === p.view)?.parts?.length ? p.view : ANY; if (!byView.has(key)) byView.set(key, []); byView.get(key).push(p); });
+      const batches = [];
+      for (const [view, ps] of byView) {
+        const checks = [...(view === ANY ? [] : list.filter((c) => c.group === view)), ...anyChecks];
+        if (!checks.length) continue;
+        let cur2 = [], bytes = 0;
+        for (const p of ps) {
+          if (cur2.length && (cur2.length >= BATCH_PHOTOS || bytes + p.image.length > BATCH_BYTES)) { batches.push({ view, photos: cur2, checks }); cur2 = []; bytes = 0; }
+          cur2.push(p); bytes += p.image.length;
+        }
+        if (cur2.length) batches.push({ view, photos: cur2, checks });
+      }
+      if (!batches.length) throw new Error('No photo belongs to a view with checks.');
+      let done = 0, info = null, verifiedAll = true;
+      const failed = [];
+      overlay.label(batches.length > 1 ? `Checking ${batches.length} batches of photos…` : 'AI is checking every point');
+      const results = await runLimited(batches.map((b) => async () => {
+        const payload = {
+          item: cur.typeName, description: cur.description, assetId: cur.asset.id, location: cur.asset.location, verify: aiSettings().verify,
+          photos: b.photos.map((p) => ({ view: p.view, image: p.image })), checks: b.checks.map((c) => ({ id: c.id, view: c.group, name: c.name, rule: c.rule, critical: c.critical })),
+        };
+        let j = null, err = null;
+        for (let attempt = 0; attempt < 2 && !j; attempt++) { try { j = await aiCall('evaluate', payload); } catch (e) { err = e; if (e.status === 401 || e.status === 403 || e.code === 'no_config') break; } }
+        done++;
+        if (batches.length > 1) overlay.label(`Checked ${done} of ${batches.length} batches…`);
+        if (!j) { failed.push({ b, err }); return null; }
+        info = info || j.info; if (!j.verified) verifiedAll = false;
+        return { b, res: j.result };
+      }), BATCH_PARALLEL);
+      if (!results.some(Boolean)) throw failed[0]?.err || new Error('The AI could not check the photos.');
+      // merge: Not OK beats OK beats Unclear
+      const RANK = { missing: 3, present: 2, unclear: 1 };
+      const best = new Map();
+      results.filter(Boolean).forEach(({ b, res }) => res.checks.forEach((r) => {
+        const assessed = !/^Not assessed/.test(r.evidence || '');
+        const cand = { ...r, rank: assessed ? RANK[r.status] || 1 : 0, angle: r.photo ? b.photos[r.photo - 1]?.angle : null };
+        const old = best.get(r.id);
+        if (!old || cand.rank > old.rank) best.set(r.id, cand);
+      }));
+      const failedViews = new Set(failed.map((f) => f.b.view));
       const rows = list.map((c) => {
-        const r = byId.get(c.id) || { status: 'unclear', evidence: 'Not assessed' };
-        const photoView = r.photo ? photos[r.photo - 1]?.angle : null; // the exact photo the evidence is on
+        const r = best.get(c.id) || { status: 'unclear', evidence: failedViews.has(c.group) ? 'The AI could not check this view – try again' : 'Not assessed' };
+        const photoView = r.angle || null; // the exact photo the evidence is on
         const row = { id: uid(), group: c.group, part: c.part, critical: c.critical, status: r.status, note: r.evidence, box: photoView ? r.box : null };
         if (c.group !== ANY && !cur.shots[c.group]) Object.assign(row, { status: 'missing', note: 'This view was not photographed', box: null });
         if (photoView && photoView !== c.group) row.foundIn = photoView;
@@ -1993,12 +2083,18 @@
       if (aiSettings().precise) {
         overlay.label('Marking the findings on each photo');
         const groups = photos.map((ph) => ({ view: ph.view, image: ph.image, rows: rows.filter((r) => (r.status === 'present' || r.status === 'missing') && (r.foundIn || r.group) === ph.angle) }));
-        await locateFindings(cur.typeName, groups, j.info?.provider);
+        await locateFindings(cur.typeName, groups, info?.provider);
       }
-      const ai = { ...res, defects: res.defects.map((d) => ({ ...d, view: d.photo ? photos[d.photo - 1]?.angle : '' })) };
-      if (res.item_matches === false) ai.summary = `The photos do not look like a ${cur.typeName.toLowerCase()} (AI saw: ${res.item_identified}). ${ai.summary}`;
+      const ok = results.filter(Boolean);
+      const defects = ok.flatMap(({ b, res }) => res.defects.map((d) => ({ ...d, view: d.photo ? b.photos[d.photo - 1]?.angle : b.view })));
+      const summaries = ok.map(({ b, res }) => (ok.length > 1 && b.view !== ANY ? `${b.view}: ` : '') + (res.summary || '')).filter((x) => x.trim());
+      const recs = [...new Set(ok.flatMap(({ res }) => res.recommendations || []))].slice(0, 12);
+      const mismatch = ok.filter(({ res }) => res.item_matches === false);
+      const ai = { item_identified: ok[0].res.item_identified, item_matches: mismatch.length <= ok.length / 2, defects, summary: summaries.join(' ').slice(0, 1500), recommendations: recs };
+      if (!ai.item_matches) ai.summary = `The photos do not look like a ${cur.typeName.toLowerCase()} (AI saw: ${mismatch[0].res.item_identified}). ${ai.summary}`;
+      if (failed.length) toast(`${failed.length} batch${failed.length > 1 ? 'es' : ''} of photos could not be checked – those checks are marked Unclear. Try again for a full result.`, true);
       await overlay.finish();
-      return buildAiResult(cur, rows, ai, { verified: j.verified, info: j.info });
+      return buildAiResult(cur, rows, ai, { verified: verifiedAll && !failed.length, info });
     } catch (e) { overlay.cancel(); throw e; }
   }
 
@@ -2729,6 +2825,7 @@
     saveTypes();
     await seed();
     seedSite();
+    cleanPhotoStore().catch(() => {});
     migrateAssets(); saveAssets(); saveHistory();
     // warm photo cache for a smooth demo
     M.preload(['p-base', 'p-elev', 'p-plat', 'p-ladder', 'f-base', 'f-elev', 'f-plat', 'f-ladder', 'x-site', 'x-net']);
