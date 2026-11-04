@@ -1051,3 +1051,8 @@ main { padding: 1.25rem 1.1rem 2.5rem; }
 .mode-box .radio input { margin-top: .2rem; accent-color: #046a38; }
 .mode-box .radio input { width: auto !important; flex: none; margin: .25rem 0 0; padding: 0; }
 .mode-box .radio span { flex: 1; text-align: left; }
+
+/* inspection type list: edit row + duplicate button */
+.type-row { display: flex; gap: .5rem; align-items: stretch; }
+.type-row .row { flex: 1; min-width: 0; }
+.type-row .dup-btn { flex: none; align-self: center; }

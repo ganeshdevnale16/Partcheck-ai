@@ -1,7 +1,14 @@
-# Inspection AI v6.5
+# Inspection AI v6.6
 
 Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
 Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
+
+## What's new in v6.6
+- Built-in inspection type **FSSAI food safety audit**: 11 views, 77 checks (A01–K06) from the Food Safety
+  Inspection Checklist, written as photo checks with the temperature limits; 19 "Critical" rows marked critical.
+  Existing installations get it automatically.
+- **Duplicate** an inspection type: Settings → Inspection types → Duplicate (any type, incl. built-in), or the
+  Duplicate button inside the editor (copies the form as it is, including unsaved edits). The copy is yours to edit.
 
 ## What's new in v6.5 – keep every item of an uploaded checklist
 - Excel / CSV checklists are recognised automatically (columns found by their content: IDs like A01, risk

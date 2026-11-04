@@ -1743,10 +1743,12 @@
   $('#btnClearHistory').addEventListener('click', () => { if (!confirm('Delete ALL reports from this device?')) return; state.history = []; saveHistory(); RENDER.settings(); toast('All reports deleted'); });
 
   function renderTypeList() {
-    $('#typeList').innerHTML = state.types.map((t) => `<button type="button" class="row" data-edit-type="${esc(t.id)}">${typeIcon(t)}
+    $('#typeList').innerHTML = state.types.map((t) => `<div class="type-row"><button type="button" class="row" data-edit-type="${esc(t.id)}">${typeIcon(t)}
       <span class="row-main"><span class="row-title">${esc(t.name)} ${t.builtin ? '<span class="type-badge">Built-in</span>' : ''}</span><span class="row-sub">${t.angles.length} views, ${countChecks(t)} checks</span></span>
-      <svg class="row-chev"><use href="#i-chev"/></svg></button>`).join('');
+      <svg class="row-chev"><use href="#i-chev"/></svg></button>
+      <button type="button" class="btn btn-line btn-sm dup-btn" data-dup-type="${esc(t.id)}" aria-label="Duplicate ${esc(t.name)}" title="Make an editable copy">Duplicate</button></div>`).join('');
     $$('#typeList [data-edit-type]').forEach((b) => b.addEventListener('click', () => openEditor(b.dataset.editType, 'settings')));
+    $$('#typeList [data-dup-type]').forEach((b) => b.addEventListener('click', () => duplicateType(getType(b.dataset.dupType), 'settings')));
   }
   $('#btnRestoreTypes').addEventListener('click', () => {
     if (!confirm('Restore the built-in inspection types? Your custom types are kept.')) return;
@@ -1767,6 +1769,25 @@
     return div;
   }
   function fillEditorViews(angles, general) { const box = $('#edViews'); box.innerHTML = ''; angles.forEach((a, i) => box.appendChild(edViewRow(a, i))); $('#edGeneral').value = (general || []).join('\n'); }
+  // ---------- duplicate an inspection type (built-in or custom) into a new editable type ----------
+  function copyName(name) {
+    const base = String(name).replace(/\s*\(copy( \d+)?\)$/i, '');
+    let n = 1, out;
+    do { out = n === 1 ? `${base} (copy)` : `${base} (copy ${n})`; n++; } while (state.types.some((t) => t.name.toLowerCase() === out.toLowerCase()));
+    return out.slice(0, 80);
+  }
+  function duplicateType(src, returnTo) {
+    if (!src) return;
+    const copy = { ...clone(src), id: 'type-' + uid(), builtin: false, name: copyName(src.name) };
+    const at = state.types.findIndex((t) => t.id === src.id);
+    state.types.splice(at >= 0 ? at + 1 : state.types.length, 0, copy);
+    saveTypes();
+    track('type_duplicated', { from: src.name });
+    toast(`Copied as "${copy.name}" – edit it and save`);
+    openEditor(copy.id, returnTo);
+    setTimeout(() => { $('#edName').focus(); $('#edName').select(); }, 50);
+  }
+
   function openEditor(id, returnTo) {
     const t = id ? getType(id) : null;
     state.editor = { id: t ? t.id : null, returnTo };
@@ -1774,6 +1795,7 @@
     $('#edName').value = t?.name || ''; $('#edDesc').value = t?.description || ''; $('#edIdLabel').value = t?.idLabel || ''; $('#edSafety').checked = Boolean(t?.safety);
     fillEditorViews(t ? t.angles : [{ name: 'Front', guidance: '', parts: [] }, { name: 'Back', guidance: '', parts: [] }], t?.general_parts || []);
     $('#edDelete').hidden = !t;
+    $('#edDuplicate').hidden = !t;
     edFiles = []; paintEdFiles(); $('#edAiNote').textContent = 'The AI builds views and checks from the name, the description and any files you add. Review them before saving.';
     show('editor');
   }
@@ -1801,6 +1823,11 @@
     if (id) Object.assign(getType(id), data);
     else { id = 'type-' + uid(); state.types.push({ id, builtin: false, module: /scaffold/i.test(data.name) ? 'scaffold' : '', ...data }); }
     saveTypes(); toast('Inspection type saved'); leaveEditor(id);
+  });
+  $('#edDuplicate').addEventListener('click', () => {
+    let data; try { data = readEditor(); } catch (e) { toast(e.message, true); return; }
+    const src = getType(state.editor?.id);
+    duplicateType({ ...(src || {}), ...data, module: src?.module || '', safety: data.safety }, state.editor?.returnTo || 'settings');
   });
   $('#edCancel').addEventListener('click', () => leaveEditor(null));
   $('#edDelete').addEventListener('click', () => {

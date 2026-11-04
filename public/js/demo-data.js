@@ -64,8 +64,118 @@
     ],
   };
 
+  const FSSAI = {
+    id: 'type-fssai', builtin: true, module: '', safety: false,
+    name: 'FSSAI food safety audit',
+    description: 'Hotel / restaurant kitchen food safety audit – 77 checks from the Food Safety Inspection Checklist (FSSAI). Photograph documents for record checks and probe readings for temperatures.',
+    idLabel: 'FSSAI licence no.',
+    angles: [
+      { name: "Licence & records", guidance: "Photograph the FSSAI licence, the display board and each document or register below, text readable.", parts: [
+        "FSSAI licence valid :: Licence or registration is valid (not expired) and matches these premises and food activities (A01)",
+        "Licence and display board shown :: Licence and Food Safety Display Board displayed in a visible place where required (A02)",
+        "FSMS plan available :: Current documented FSMS / HACCP plan covering the actual kitchen processes (A03)",
+        "Food safety roles assigned :: Chart or document names the owners for food safety, monitoring and escalation (A04)",
+        "Food safety records maintained :: Records complete, legible, dated and signed, with no gaps (A05)",
+        "Compliance register up to date :: Register lists licence conditions and notices with evidence of closure (A06)"
+      ] },
+      { name: "Premises & facilities", guidance: "Wide photos of the kitchen, then close-ups of hand-wash sinks, toilets, lights, water point and chemical store.", parts: [
+        "Raw and ready-to-eat areas separated :: Layout keeps raw food handling physically apart from ready-to-eat preparation (B01)",
+        "Floors, walls and ceilings in good repair :: Surfaces intact and cleanable; no flaking paint, cracks, leaks or mould (B02)",
+        "Drainage and ventilation working :: Exhaust hoods and drains clean; no standing water or condensation over food (B03)",
+        "Lights protected :: Lighting adequate; bulbs and tubes over food areas have covers or shatter-proof fittings (B04)",
+        "Hand-wash stations equipped :: Hand-wash sink accessible with running water, soap and paper towels or dryer (B05)",
+        "Toilets clean and separated :: Toilets and changing rooms clean and not opening directly into food areas (B06)",
+        "Food-contact equipment in good condition :: Utensils, containers and worktops food-grade, intact and clean; no rust or cracks (B07)",
+        "! Potable water and ice :: Potable water source used for food and ice; current water test report shows it is safe (B08)",
+        "Chemicals stored away from food :: Cleaning chemicals labelled and kept in a separate area away from food and utensils (B09)"
+      ] },
+      { name: "Receiving", guidance: "At the receiving point: goods being checked, the probe thermometer reading, the reject area and the delivery vehicle.", parts: [
+        "Approved supplier list :: Approved supplier list with each supplier's FSSAI licence number (C01)",
+        "Incoming goods checked :: Delivered items undamaged, within expiry date, labelled and free of contamination (C02)",
+        "! Delivery temperatures checked :: Probe reading shows chilled ≤5°C and frozen ≤−18°C at receipt, written in the log (C03)",
+        "! Rejected items segregated :: Rejected, expired or damaged items clearly marked and kept apart from usable stock (C04)",
+        "Batches traceable :: Invoice or receiving record links supplier, batch / lot and date received (C05)",
+        "Delivery vehicle clean :: Vehicle and crates clean, covered and at the required temperature (C06)"
+      ] },
+      { name: "Storage", guidance: "Dry store, fridges and freezers: shelves, labelled containers and the thermometer display or probe reading.", parts: [
+        "Dry store clean and organised :: Dry store clean, dry and ventilated, stock neatly arranged, no signs of pests (D01)",
+        "Food stored off the floor :: All food on racks or pallets, off the floor and away from walls (D02)",
+        "! Raw and cooked food segregated :: Raw food stored below and apart from cooked / ready-to-eat food, all covered (D03)",
+        "! Fridge and freezer temperatures :: Thermometer shows chilled ≤5°C (≤4°C for animal-origin food) and frozen ≤−18°C (D04)",
+        "Temperature logs maintained :: Fridge and freezer log filled every shift, deviations and actions recorded (D05)",
+        "No expired stock :: Stock rotated first-expiry-first-out; no expired, spoiled or unlabelled food on shelves (D06)",
+        "Containers covered and labelled :: Food containers covered and labelled with item name and prep / use-by date (D07)",
+        "Non-food items kept out of food storage :: No chemicals or non-food items stored with food or packaging (D08)"
+      ] },
+      { name: "Preparation & cooking", guidance: "Prep and cooking areas during work: thawing, cutting boards, produce washing, and probe readings of cooked, hot-held and reheated food.", parts: [
+        "Safe thawing :: Food thawing in the fridge (≤5°C) or another safe method, covered, no drips onto other food (E01)",
+        "! Separate raw and ready-to-eat equipment :: Dedicated or colour-coded boards and knives for raw and ready-to-eat food (E02)",
+        "Produce washed safely :: Vegetables and fruit washed in clean potable water in a dedicated sink or container (E03)",
+        "! Cooking core temperature :: Probe in cooked food shows veg ≥65°C for 2 min, non-veg ≥70°C for 2 min or ≥75°C (E04)",
+        "! Hot holding temperature :: Probe in hot-held food shows ≥65°C (≥70°C for non-veg); cold food ≤5°C (E05)",
+        "! Cooling controlled :: Cooling log shows 60°C to 21°C within 2 h, then 21°C to 5°C within the next 2 h (E06)",
+        "! Reheating to safe temperature :: Reheated food probe reads ≥75°C; not reheated in a bain-marie or under a heat lamp (E07)",
+        "Batch and discard times labelled :: Prepared high-risk food labelled with time; nothing left out at room temperature (E08)",
+        "Hygienic utensil use :: Clean separate spoons for tasting and serving; no bare-hand contact with ready food (E09)",
+        "! No reuse of customer-exposed food :: Returned or leftover buffet food discarded as per policy, not reused (E10)"
+      ] },
+      { name: "Staff hygiene", guidance: "Food handlers at work: hand washing, uniforms and hair covers, hands and arms, and their training certificates.", parts: [
+        "! Handwashing practised :: Food handlers washing hands with soap at the hand-wash sink before handling food (F01)",
+        "Clean uniforms and hair covers :: Staff wear clean uniforms, hair nets or caps and aprons as required (F02)",
+        "No jewellery or personal items :: No rings, watches, bangles or phones in food preparation areas (F03)",
+        "! Cuts covered :: Cuts or wounds covered with a waterproof dressing or gloves; no visibly unwell food handlers (F04)",
+        "No eating or smoking in the kitchen :: No eating, smoking, tobacco chewing or spitting in food areas; signage displayed (F05)",
+        "Hygiene training records :: Records show staff trained in hygiene, cross-contamination and allergens (F06)",
+        "FoSTaC supervisor certificate :: Valid FoSTaC Food Safety Supervisor certificate for the person on duty (F07)"
+      ] },
+      { name: "Cleaning & pests", guidance: "Cleaning schedule, sanitiser in use, cleaned surfaces, dish area, pest-control records, doors and screens, bins and drains.", parts: [
+        "Cleaning schedule in place :: Schedule lists area, method, chemical, frequency and person responsible, with sign-offs (G01)",
+        "Correct sanitiser in use :: Sanitiser labelled food-safe and prepared at the dilution stated on the label (G02)",
+        "! Food-contact surfaces clean :: Worktops, boards and slicers visibly clean and sanitised, no food residue (G03)",
+        "Dishwashing effective :: Dishwasher or 3-sink wash in use; washed utensils clean and air-drying on racks (G04)",
+        "Pest control records :: Pest-control contract and recent service reports; no signs of active infestation (G05)",
+        "Pest-proofing in place :: Doors close tightly, windows screened, drains covered, no gaps or holes (G06)",
+        "Waste bins covered and clean :: Bins lidded (foot-operated), not overflowing and clean (G07)",
+        "Drains and grease traps clean :: Drains and grease trap clean; no standing wastewater, odour or pests (G08)"
+      ] },
+      { name: "Allergens", guidance: "Allergen matrix, segregated allergen ingredients, separate utensils, special-diet order tickets and the menu.", parts: [
+        "Allergen matrix available :: Recipe / allergen matrix lists allergens for each dish and matches supplier labels (H01)",
+        "! Allergen ingredients segregated :: Allergen ingredients stored labelled and apart; separate utensils used (H02)",
+        "Allergen information for staff :: Allergen information sheet available to staff at the service point (H03)",
+        "! Special-diet orders controlled :: Allergen or special-diet orders clearly flagged on the ticket and prepared separately (H04)",
+        "Menu declarations accurate :: Menu and labels show required declarations (veg / non-veg mark, allergens where applicable) (H05)"
+      ] },
+      { name: "Packaging & service", guidance: "Packaging store, packed-food labels, transport containers or vehicle, and the buffet counter with probe readings.", parts: [
+        "Food-grade packaging :: Packaging marked food-grade and suitable for the food it holds (I01)",
+        "Packaging stored protected :: Packaging stored covered, clean and dry, away from chemicals and pests (I02)",
+        "Packed food labelled :: Labels show product name, date, batch and storage instructions (I03)",
+        "Transport containers suitable :: Food carried in clean, closed, insulated containers or vehicles that hold temperature (I04)",
+        "! Buffet protected and at temperature :: Sneeze guard fitted, separate serving utensils; hot food ≥65°C and cold ≤5°C (I05)",
+        "! Dispatch record complete :: Dispatch log shows batch, time, temperature, vehicle and handover sign-off (I06)"
+      ] },
+      { name: "Incidents & actions", guidance: "Photograph the incident procedure, complaint register, recall / traceability record and corrective-action register pages.", parts: [
+        "Incident procedure available :: Written procedure for food-poisoning or contamination incidents with escalation contacts (J01)",
+        "Complaint register maintained :: Complaints logged with date, product, details, investigation and action taken (J02)",
+        "! Recall and traceability procedure :: Recall / withdrawal procedure and a recent mock-recall or traceability test record (J03)",
+        "Corrective action register :: Each finding has a root cause, action, owner, due date and status (J04)",
+        "Closure verified :: Closed actions signed off by a responsible person with evidence (J05)",
+        "Management review held :: Minutes or report show incidents, repeat findings and overdue actions reviewed (J06)"
+      ] },
+      { name: "Training & audits", guidance: "Photograph the training matrix, supervisor check sheets, reviewed logs, internal audit reports and lab test reports.", parts: [
+        "Training plan in place :: Training matrix covers induction and refresher training for all food handlers (K01)",
+        "Trained before working :: Induction records signed before staff start food-safety-critical tasks (K02)",
+        "Supervisor shift checks :: Supervisor hygiene check sheets completed and signed every shift (K03)",
+        "Logs reviewed :: Temperature and cleaning logs complete and signed as reviewed, deviations actioned (K04)",
+        "Internal audits done :: Internal audit schedule and recent reports with repeat findings followed up (K05)",
+        "Water and food test reports :: Lab reports for water / food tests as per the sampling plan; failures investigated (K06)"
+      ] },
+    ],
+    general_parts: [],
+  };
+
   const TYPES = [
     SCAFFOLD,
+    FSSAI,
     {
       id: 'type-extinguisher', builtin: true, module: '', safety: true,
       name: 'Fire extinguisher', description: 'Monthly visual check of a portable fire extinguisher', idLabel: 'Extinguisher ID',
