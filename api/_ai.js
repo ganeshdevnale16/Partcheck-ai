@@ -387,3 +387,26 @@ ${list}
 Coordinates: ${p.box.text}.
 Return JSON: { "items": [{ "id": "c1", "${p.box.key}": ${p.box.shape} or null }] }`;
 }
+
+
+// Convert ONE section of an existing checklist (spreadsheet rows) into one photo view – every row becomes one check.
+export const SYSTEM_CONVERT = `You convert existing inspection / audit checklists into checks an inspector can verify with phone photos.
+You never drop, merge or add rows: exactly one check per row, keeping the row reference.`;
+export function convertPrompt({ name, description, header, rows, sectionKey }) {
+  const list = rows.map((r) => `${r.ref} | ${r.cells.join(' | ')}`).join('\n');
+  return `Inspection: "${name}"${description ? ` – ${description}` : ''}
+Section ${sectionKey} of the checklist. ${header ? `Column headings (may be shifted by one column): ${header}` : ''}
+Rows (ref | cells):
+${list}
+
+For EACH row write one check:
+- "ref": the row reference exactly as given
+- "name": short check name, max 8 words
+- "rule": what must be visibly true, max 30 words, in plain English, keeping key limits (temperatures, distances, dates).
+  If the row is about documents, records, licences or training, the rule says what the photographed document / notice must show.
+- "critical": true only when the row's risk is Critical, or failing it is an immediate food-safety / life-safety risk.
+Also name this section as a photo view (2-4 words, e.g. "Cold storage", "Licence & records") with a one-line photo guidance.
+
+Return JSON: { "view": "", "guidance": "", "checks": [{ "ref": "A01", "name": "", "rule": "", "critical": false }] }
+Return exactly ${rows.length} checks, one per row, same order.`;
+}

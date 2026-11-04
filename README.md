@@ -1,7 +1,16 @@
-# Inspection AI v6.4
+# Inspection AI v6.5
 
 Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
 Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
+
+## What's new in v6.5 – keep every item of an uploaded checklist
+- Excel / CSV checklists are recognised automatically (columns found by their content: IDs like A01, risk
+  Low/Medium/High/Critical, the question text, sections from a section column or the ID letter).
+- Choose **Keep every item** (default) or **AI picks the key photo checks**.
+- Keep every item: one view per section, exactly one check per row, row reference kept (e.g. "(D04)"), rows with
+  risk "Critical" marked critical. Sections are converted by the AI 3 at a time; any row the AI misses, or any
+  section that fails, is built directly from the file – nothing is dropped. Works without an AI key too.
+- Inspections now handle up to 150 checks (was 80); AI answer room grows with the number of checks.
 
 ## What's new in v6.4 – several photos per view
 - After a view's first photo, tap **+ Same view** to take another photo of the same view (no typing).

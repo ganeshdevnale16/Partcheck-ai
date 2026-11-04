@@ -1853,7 +1853,7 @@
     const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task, ...payload, device: deviceCfg() }) });
     let j = null; try { j = await r.json(); } catch { /* not json */ }
     if (!r.ok || !j?.ok) {
-      if (r.status === 404) throw new Error('AI service not found. Deploy the api folder (Vercel) or run "npm start" locally.');
+      if (r.status === 404) { const e = new Error('AI service not found. Deploy the api folder (Vercel) or run "npm start" locally.'); e.status = 404; throw e; }
       if (r.status === 413) throw new Error('Photos are too large to send. Try fewer photos.');
       const e = new Error(j?.error || `AI request failed (${r.status}).`); e.code = j?.code; throw e;
     }
@@ -2450,6 +2450,56 @@
     }
     return { images: out, pages: pdf.numPages };
   }
+  // ---------- existing checklists (Excel / CSV): find the rows, columns are recognised by their CONTENT ----------
+  const ID_RE = /^[A-Za-z]{1,4}[-. ]?\d{1,4}(\.\d+)*$/;
+  const RISK_RE = /^(very\s+)?(low|medium|med|moderate|high|critical|major|minor)$/i;
+  function parseCsv(text) {
+    const rows = []; let row = [], cell = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) { if (ch === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (ch === '"') q = false; else cell += ch; continue; }
+      if (ch === '"') q = true; else if (ch === ',') { row.push(cell); cell = ''; } else if (ch === '\n' || ch === '\r') { if (ch === '\r' && text[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; } else cell += ch;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+  function detectChecklist(aoa) {
+    const clean = aoa.map((r) => (r || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim())).filter((r) => r.some(Boolean));
+    if (clean.length < 6) return null;
+    const ncol = Math.max(...clean.map((r) => r.length));
+    const isText = (v) => v.length > 15 && !ID_RE.test(v);
+    // header = first row whose next rows look like data
+    let h = clean.findIndex((r, i) => i < 10 && r.filter(Boolean).length >= 2 && clean.slice(i + 1, i + 4).some((x) => x.some(isText)));
+    if (h < 0) h = 0;
+    const header = clean[h].join(' | ');
+    const data = clean.slice(h + 1).filter((r) => r.filter(Boolean).length >= 2);
+    if (data.length < 5) return null;
+    const col = (j) => data.map((r) => r[j] || '');
+    const frac = (vals, fn) => vals.filter(Boolean).length ? vals.filter((v) => v && fn(v)).length / vals.filter(Boolean).length : 0;
+    const filled = (j) => col(j).filter(Boolean).length / data.length;
+    const avg = (j) => { const v = col(j).filter(Boolean); return v.length ? v.reduce((n, x) => n + x.length, 0) / v.length : 0; };
+    const distinct = (j) => { const v = col(j).filter(Boolean); return v.length ? new Set(v).size / v.length : 0; };
+    const cols = [...Array(ncol).keys()].filter((j) => filled(j) > 0.5);
+    const idCol = cols.find((j) => frac(col(j), (v) => ID_RE.test(v)) > 0.6 && distinct(j) > 0.8);
+    const riskCol = cols.find((j) => frac(col(j), (v) => RISK_RE.test(v)) > 0.6);
+    const textCols = cols.filter((j) => j !== idCol && j !== riskCol && avg(j) > 15 && distinct(j) > 0.6);
+    if (!textCols.length) return null;
+    const score = (j) => frac(col(j), (v) => v.includes('?')) * 100 + avg(j);
+    const qCol = textCols.sort((x, y) => score(y) - score(x))[0];
+    const hdr = clean[h];
+    const secCol = cols.find((j) => j !== idCol && j !== qCol && /section|area|category|zone|department|chapter|module/i.test(hdr[j] || '') && frac(col(j), (v) => !ID_RE.test(v)) > 0.8 && distinct(j) < 0.5);
+    let n = 0;
+    const rows = data.filter((r) => (r[qCol] || '').length > 3).map((r) => {
+      n++;
+      const ref = (idCol !== undefined && r[idCol]) || `R${String(n).padStart(2, '0')}`;
+      const section = (secCol !== undefined && r[secCol]) || (idCol !== undefined && (r[idCol].match(/^[A-Za-z]+/) || [])[0]?.toUpperCase()) || 'Checks';
+      return { ref, section, question: r[qCol], risk: riskCol !== undefined ? r[riskCol] : '', cells: cols.filter((j) => j !== idCol && r[j]).map((j) => r[j]) };
+    });
+    if (rows.length < 5) return null;
+    const order = [...new Set(rows.map((r) => r.section))];
+    return { header, rows, sections: order.map((k) => ({ key: k, rows: rows.filter((r) => r.section === k) })) };
+  }
+
   async function parseRefFile(file) {
     const n = file.name.toLowerCase();
     const item = { id: uid(), name: file.name, size: file.size, status: 'reading' };
@@ -2481,11 +2531,14 @@
         await loadLib('xlsx', 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
         const wb = window.XLSX.read(await file.arrayBuffer(), { type: 'array' });
         const text = wb.SheetNames.map((s) => `[sheet ${s}]\n` + window.XLSX.utils.sheet_to_csv(wb.Sheets[s])).join('\n');
-        return { ...item, status: 'ok', kind: 'text', text, note: `${wb.SheetNames.length} sheet${wb.SheetNames.length === 1 ? '' : 's'}` };
+        let checklist = null;
+        for (const sn of wb.SheetNames) { const c = detectChecklist(window.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' })); if (c && (!checklist || c.rows.length > checklist.rows.length)) checklist = c; }
+        return { ...item, status: 'ok', kind: 'text', text, checklist, note: checklist ? `Checklist: ${checklist.rows.length} items in ${checklist.sections.length} section${checklist.sections.length === 1 ? '' : 's'}` : `${wb.SheetNames.length} sheet${wb.SheetNames.length === 1 ? '' : 's'}` };
       }
       if (/\.(txt|md|csv|json)$/.test(n) || file.type.startsWith('text/')) {
         const text = (await file.text()).trim();
-        return { ...item, status: 'ok', kind: 'text', text, note: `${text.split(/\s+/).length} words` };
+        const checklist = n.endsWith('.csv') ? detectChecklist(parseCsv(text)) : null;
+        return { ...item, status: 'ok', kind: 'text', text, checklist, note: checklist ? `Checklist: ${checklist.rows.length} items in ${checklist.sections.length} section${checklist.sections.length === 1 ? '' : 's'}` : `${text.split(/\s+/).length} words` };
       }
       if (n.endsWith('.doc')) return { ...item, status: 'error', note: 'Old .doc format – save it as .docx or PDF' };
       return { ...item, status: 'error', note: 'File type not supported' };
@@ -2497,6 +2550,20 @@
       <span class="fn"><b>${esc(f.name)}</b><small>${f.status === 'reading' ? 'Reading…' : esc(f.note || '')}</small></span>
       <button type="button" class="icon-btn" data-rmfile="${esc(f.id)}" aria-label="Remove ${esc(f.name)}"><svg><use href="#i-close"/></svg></button></li>`).join('');
     $$('[data-rmfile]', ul).forEach((b) => b.addEventListener('click', () => { edFiles = edFiles.filter((x) => x.id !== b.dataset.rmfile); paintEdFiles(); }));
+    const cl = edChecklist();
+    const box = $('#edModeBox');
+    box.hidden = !cl;
+    if (cl) {
+      box.innerHTML = `<p><b>${esc(cl.file)}</b> is a checklist with <b>${cl.rows.length} items</b> in <b>${cl.sections.length} sections</b>.</p>
+        <label class="radio"><input type="radio" name="edMode" value="all" ${edMode === 'all' ? 'checked' : ''} /> <span><b>Keep every item</b> – ${cl.rows.length} checks in ${cl.sections.length} views (one view per section)</span></label>
+        <label class="radio"><input type="radio" name="edMode" value="pick" ${edMode === 'pick' ? 'checked' : ''} /> <span><b>AI picks the key photo checks</b> – a shorter checklist</span></label>`;
+      $$('input[name="edMode"]', box).forEach((r) => r.addEventListener('change', () => { edMode = r.value; }));
+    }
+  }
+  let edMode = 'all';
+  function edChecklist() {
+    const f = edFiles.find((x) => x.status === 'ok' && x.checklist);
+    return f ? { ...f.checklist, file: f.name } : null;
   }
   async function addRefFiles(list) {
     const files = [...list];
@@ -2515,6 +2582,60 @@
   $('#edDrop').addEventListener('drop', (e) => { if (e.dataTransfer?.files?.length) addRefFiles(e.dataTransfer.files); });
 
   const toPart = (c) => `${c.critical ? '! ' : ''}${c.name}${c.rule ? ' :: ' + c.rule : ''}`;
+  // ---------- keep every item of an uploaded checklist: one view per section, one check per row ----------
+  const shortName = (q) => {
+    const t = String(q).replace(/\?+\s*$/, '').replace(/^(is|are|do|does|has|have|can|was|were|will|should)\s+(there\s+)?((a|an|the)\s+)?/i, '').replace(/::/g, ' ').trim();
+    const w = t.split(/\s+/);
+    const s2 = w.slice(0, 8).join(' ') + (w.length > 8 ? '…' : '');
+    return s2.charAt(0).toUpperCase() + s2.slice(1);
+  };
+  async function convertChecklist(item, description, cl) {
+    const secs = cl.sections;
+    const results = new Array(secs.length).fill(null);
+    let aiOff = false, failed = 0, info = null;
+    const overlay = analyseStart('', [`Reading ${cl.rows.length} items in ${secs.length} sections`, 'Turning every row into a photo check', 'Keeping your references and critical items', 'Building the views']);
+    let done = 0;
+    const work = secs.map((sec, i) => async () => {
+      if (aiOff) return;
+      try {
+        const j = await aiCall('convert', { name: item, description, header: cl.header, sectionKey: sec.key, rows: sec.rows.map((r) => ({ ref: r.ref, cells: r.cells })) });
+        results[i] = j.result; info = j.info;
+      } catch (e) {
+        if (e.code === 'no_config' || e.status === 404) aiOff = true; else failed++;
+      }
+      done++; overlay.label(`Converting section ${done} of ${secs.length}…`);
+    });
+    // 3 sections at a time
+    const runners = [...Array(Math.min(3, work.length))].map(async () => { while (work.length) await work.shift()(); });
+    await Promise.all(runners);
+    const hasRisk = cl.rows.some((r) => r.risk);
+    let fromAi = 0, fromFile = 0;
+    const views = secs.map((sec, i) => {
+      const res = results[i];
+      const parts = sec.rows.map((r) => {
+        const c = res?.checks?.find((x) => x.ref === r.ref && !x.missing);
+        const critical = hasRisk ? /critical/i.test(r.risk) : !!c?.critical;
+        if (c && c.name) { fromAi++; return toPart({ name: c.name, rule: `${c.rule || shortName(r.question)} (${r.ref})`, critical }); }
+        fromFile++;
+        return toPart({ name: shortName(r.question), rule: `${r.question.replace(/::/g, ' ')} (${r.ref})`, critical });
+      });
+      const name = (res?.view || (/^[A-Z]{1,3}$/.test(sec.key) ? `Section ${sec.key}` : sec.key)).slice(0, 60);
+      return { name, guidance: res?.guidance || `Photograph the area and any records for section ${sec.key}`, parts };
+    });
+    const seen = {};
+    views.forEach((v, i) => { const k = v.name.toLowerCase(); if (seen[k]) v.name = `${v.name} (${secs[i].key})`; seen[v.name.toLowerCase()] = 1; });
+    await overlay.finish();
+    fillEditorViews(views, []);
+    if (!$('#edDesc').value.trim()) $('#edDesc').value = `${item} – ${cl.rows.length} items from ${cl.file}`;
+    const n = views.reduce((t, v) => t + v.parts.length, 0);
+    const nCrit = cl.rows.filter((r) => /critical/i.test(r.risk)).length;
+    $('#edAiNote').textContent = aiOff
+      ? `No AI key is set up, so all ${n} items were taken directly from ${cl.file} (${views.length} views). An Admin can add a key to have the AI rewrite them as photo checks.`
+      : `Kept all ${n} items from ${cl.file} in ${views.length} views${info ? ` (AI: ${info.label})` : ''}. ${fromAi} rewritten by the AI as photo checks${fromFile ? `, ${fromFile} taken directly from your file` : ''}.${nCrit ? ` ${nCrit} rows with risk "Critical" are marked critical.` : ''} Review them, then save.`;
+    if (failed && !aiOff) toast(`${failed} section${failed > 1 ? 's' : ''} could not be rewritten by the AI – those rows were taken from your file.`, true);
+    else toast(`Checklist created: ${views.length} views, ${n} checks`);
+    track('checklist_converted', { items: n, views: views.length, ai: !aiOff });
+  }
   function offlineTemplate(item) {
     const lib = D.SUGGEST_LIBRARY.find((x) => x.k.test(item));
     if (lib) return { angles: lib.angles, general: lib.general };
@@ -2532,6 +2653,8 @@
     if (!item) { toast('Type the inspection name first, e.g. "FSSAI kitchen audit".', true); $('#edName').focus(); return; }
     if (edFiles.some((f) => f.status === 'reading')) { toast('Wait until the files are read.', true); return; }
     if ($$('#edViews .aparts').some((t) => t.value.trim()) && !confirm('Replace the current views and checks with the AI checklist?')) return;
+    const cl = edChecklist();
+    if (cl && edMode === 'all') return convertChecklist(item, description, cl);
     const ok = edFiles.filter((f) => f.status === 'ok');
     let documentText = ok.filter((f) => f.kind === 'text').map((f) => `=== ${f.name} ===\n${f.text}`).join('\n\n');
     if (documentText.length > ED_MAX_TEXT) { documentText = documentText.slice(0, ED_MAX_TEXT); toast('The documents are long – the AI reads the first part.', false); }
