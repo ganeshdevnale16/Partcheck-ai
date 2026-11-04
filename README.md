@@ -1,7 +1,14 @@
-# Inspection AI v6.7
+# Inspection AI v6.8
 
 Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
 Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
+
+## What's new in v6.8 – views for checklists without sections
+Uploaded Excel / CSV checklists are split into views in this order:
+1. a section / area / category column, 2. section heading rows (e.g. a row "COLD STORAGE" above its questions),
+3. IDs: A01 → section A, 3.2 → section 3, 4. otherwise the AI groups the questions into views by where they are
+photographed (every row exactly once – rows it forgets or repeats are repaired), 5. without an AI key: blocks of ~8 rows.
+Your own heading names are kept as view names.
 
 ## What's new in v6.7 – no photo limit
 - Take or upload any number of photos (the 12-photo limit is gone).

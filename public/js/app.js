@@ -2574,7 +2574,7 @@
     return { images: out, pages: pdf.numPages };
   }
   // ---------- existing checklists (Excel / CSV): find the rows, columns are recognised by their CONTENT ----------
-  const ID_RE = /^[A-Za-z]{1,4}[-. ]?\d{1,4}(\.\d+)*$/;
+  const ID_RE = /^([A-Za-z]{1,4}[-. ]?\d{1,4}(\.\d+)*|\d{1,3}(\.\d{1,3}){0,3}\.?)$/;
   const RISK_RE = /^(very\s+)?(low|medium|med|moderate|high|critical|major|minor)$/i;
   function parseCsv(text) {
     const rows = []; let row = [], cell = '', q = false;
@@ -2595,7 +2595,12 @@
     let h = clean.findIndex((r, i) => i < 10 && r.filter(Boolean).length >= 2 && clean.slice(i + 1, i + 4).some((x) => x.some(isText)));
     if (h < 0) h = 0;
     const header = clean[h].join(' | ');
-    const data = clean.slice(h + 1).filter((r) => r.filter(Boolean).length >= 2);
+    const body = clean.slice(h + 1);
+    const isHeading = (r) => { const v = r.filter(Boolean); return v.length === 1 && v[0].length >= 2 && v[0].length <= 80 && !v[0].includes('?') && !ID_RE.test(v[0]); };
+    let heading = '';
+    const headingOf = new Map();
+    const data = [];
+    body.forEach((r) => { if (isHeading(r)) heading = r.find(Boolean); else if (r.filter(Boolean).length >= 2) { data.push(r); headingOf.set(r, heading); } });
     if (data.length < 5) return null;
     const col = (j) => data.map((r) => r[j] || '');
     const frac = (vals, fn) => vals.filter(Boolean).length ? vals.filter((v) => v && fn(v)).length / vals.filter(Boolean).length : 0;
@@ -2612,13 +2617,21 @@
     const hdr = clean[h];
     const secCol = cols.find((j) => j !== idCol && j !== qCol && /section|area|category|zone|department|chapter|module/i.test(hdr[j] || '') && frac(col(j), (v) => !ID_RE.test(v)) > 0.8 && distinct(j) < 0.5);
     let n = 0;
+    const used = new Set();
+    const titleCase = (t) => (t === t.toUpperCase() ? t.toLowerCase().replace(/(^|[\s/&(-])([a-z])/g, (m, a, b) => a + b.toUpperCase()) : t);
+    // where does the grouping come from: section column > heading rows > ID prefix (A01 -> A, 3.2 -> 3) > none
+    const idPrefix = (id) => { if (!id) return ''; const l = id.match(/^[A-Za-z]+/); if (l) return l[0].toUpperCase(); const d = id.match(/^(\d+)\.\d/); return d ? d[1] : ''; };
     const rows = data.filter((r) => (r[qCol] || '').length > 3).map((r) => {
       n++;
-      const ref = (idCol !== undefined && r[idCol]) || `R${String(n).padStart(2, '0')}`;
-      const section = (secCol !== undefined && r[secCol]) || (idCol !== undefined && (r[idCol].match(/^[A-Za-z]+/) || [])[0]?.toUpperCase()) || 'Checks';
+      let ref = (idCol !== undefined && r[idCol]) || `R${String(n).padStart(2, '0')}`;
+      if (used.has(ref)) ref = `${ref}-${n}`; used.add(ref);
+      const section = (secCol !== undefined && r[secCol]) || (headingOf.get(r) && titleCase(headingOf.get(r))) || idPrefix(idCol !== undefined ? r[idCol] : '') || '';
       return { ref, section, question: r[qCol], risk: riskCol !== undefined ? r[riskCol] : '', cells: cols.filter((j) => j !== idCol && r[j]).map((j) => r[j]) };
     });
     if (rows.length < 5) return null;
+    const grouped = rows.some((r) => r.section) && new Set(rows.map((r) => r.section)).size > 1;
+    if (!grouped) { rows.forEach((r) => { r.section = 'Checks'; }); return { header, rows, needsGrouping: true, sections: [{ key: 'Checks', rows }] }; }
+    rows.forEach((r, k) => { if (!r.section) r.section = rows[k - 1]?.section || 'Other checks'; });
     const order = [...new Set(rows.map((r) => r.section))];
     return { header, rows, sections: order.map((k) => ({ key: k, rows: rows.filter((r) => r.section === k) })) };
   }
@@ -2656,12 +2669,12 @@
         const text = wb.SheetNames.map((s) => `[sheet ${s}]\n` + window.XLSX.utils.sheet_to_csv(wb.Sheets[s])).join('\n');
         let checklist = null;
         for (const sn of wb.SheetNames) { const c = detectChecklist(window.XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' })); if (c && (!checklist || c.rows.length > checklist.rows.length)) checklist = c; }
-        return { ...item, status: 'ok', kind: 'text', text, checklist, note: checklist ? `Checklist: ${checklist.rows.length} items in ${checklist.sections.length} section${checklist.sections.length === 1 ? '' : 's'}` : `${wb.SheetNames.length} sheet${wb.SheetNames.length === 1 ? '' : 's'}` };
+        return { ...item, status: 'ok', kind: 'text', text, checklist, note: checklist ? (checklist.needsGrouping ? `Checklist: ${checklist.rows.length} items, no sections` : `Checklist: ${checklist.rows.length} items in ${checklist.sections.length} section${checklist.sections.length === 1 ? '' : 's'}`) : `${wb.SheetNames.length} sheet${wb.SheetNames.length === 1 ? '' : 's'}` };
       }
       if (/\.(txt|md|csv|json)$/.test(n) || file.type.startsWith('text/')) {
         const text = (await file.text()).trim();
         const checklist = n.endsWith('.csv') ? detectChecklist(parseCsv(text)) : null;
-        return { ...item, status: 'ok', kind: 'text', text, checklist, note: checklist ? `Checklist: ${checklist.rows.length} items in ${checklist.sections.length} section${checklist.sections.length === 1 ? '' : 's'}` : `${text.split(/\s+/).length} words` };
+        return { ...item, status: 'ok', kind: 'text', text, checklist, note: checklist ? (checklist.needsGrouping ? `Checklist: ${checklist.rows.length} items, no sections` : `Checklist: ${checklist.rows.length} items in ${checklist.sections.length} section${checklist.sections.length === 1 ? '' : 's'}`) : `${text.split(/\s+/).length} words` };
       }
       if (n.endsWith('.doc')) return { ...item, status: 'error', note: 'Old .doc format – save it as .docx or PDF' };
       return { ...item, status: 'error', note: 'File type not supported' };
@@ -2677,8 +2690,12 @@
     const box = $('#edModeBox');
     box.hidden = !cl;
     if (cl) {
-      box.innerHTML = `<p><b>${esc(cl.file)}</b> is a checklist with <b>${cl.rows.length} items</b> in <b>${cl.sections.length} sections</b>.</p>
-        <label class="radio"><input type="radio" name="edMode" value="all" ${edMode === 'all' ? 'checked' : ''} /> <span><b>Keep every item</b> – ${cl.rows.length} checks in ${cl.sections.length} views (one view per section)</span></label>
+      box.innerHTML = cl.needsGrouping
+        ? `<p><b>${esc(cl.file)}</b> is a checklist with <b>${cl.rows.length} items</b> and no sections.</p>
+        <label class="radio"><input type="radio" name="edMode" value="all" ${edMode === 'all' ? 'checked' : ''} /> <span><b>Keep every item</b> – ${cl.rows.length} checks, grouped into views by where they are photographed</span></label>`
+        : `<p><b>${esc(cl.file)}</b> is a checklist with <b>${cl.rows.length} items</b> in <b>${cl.sections.length} sections</b>.</p>
+        <label class="radio"><input type="radio" name="edMode" value="all" ${edMode === 'all' ? 'checked' : ''} /> <span><b>Keep every item</b> – ${cl.rows.length} checks in ${cl.sections.length} views (one view per section)</span></label>`;
+      box.innerHTML += `
         <label class="radio"><input type="radio" name="edMode" value="pick" ${edMode === 'pick' ? 'checked' : ''} /> <span><b>AI picks the key photo checks</b> – a shorter checklist</span></label>`;
       $$('input[name="edMode"]', box).forEach((r) => r.addEventListener('change', () => { edMode = r.value; }));
     }
@@ -2713,10 +2730,27 @@
     return s2.charAt(0).toUpperCase() + s2.slice(1);
   };
   async function convertChecklist(item, description, cl) {
-    const secs = cl.sections;
+    let secs = cl.sections;
+    let aiOff = false, failed = 0, info = null, groupedBy = cl.needsGrouping ? '' : 'file';
+    const overlay = analyseStart('', [`Reading ${cl.rows.length} items`, cl.needsGrouping ? 'Grouping the questions into views' : `Using the ${secs.length} sections of your file`, 'Turning every row into a photo check', 'Building the views']);
+    if (cl.needsGrouping) {
+      // no sections in the file: the AI groups the rows by where they are photographed (every row exactly once)
+      overlay.label('Grouping the questions into views…');
+      try {
+        const j = await aiCall('group', { name: item, description, rows: cl.rows.map((r) => ({ ref: r.ref, text: r.question + (r.cells.length > 1 ? ' – ' + r.cells.filter((c) => c !== r.question).join(' · ').slice(0, 120) : '') })) });
+        const byRef = new Map(cl.rows.map((r) => [r.ref, r]));
+        secs = j.result.views.map((v) => ({ key: v.name, name: v.name, guidance: v.guidance, rows: v.refs.map((x) => byRef.get(x)).filter(Boolean) })).filter((v) => v.rows.length);
+        info = j.info; groupedBy = 'ai';
+      } catch (e) {
+        if (e.code === 'no_config' || e.status === 404) aiOff = true;
+        // fallback: consecutive blocks of about 8 rows
+        const size = cl.rows.length <= 12 ? cl.rows.length : 8;
+        secs = [];
+        for (let k = 0; k < cl.rows.length; k += size) { const part = cl.rows.slice(k, k + size); secs.push({ key: `Checks ${part[0].ref}–${part[part.length - 1].ref}`, name: `Checks ${part[0].ref}–${part[part.length - 1].ref}`, rows: part }); }
+        groupedBy = 'blocks';
+      }
+    }
     const results = new Array(secs.length).fill(null);
-    let aiOff = false, failed = 0, info = null;
-    const overlay = analyseStart('', [`Reading ${cl.rows.length} items in ${secs.length} sections`, 'Turning every row into a photo check', 'Keeping your references and critical items', 'Building the views']);
     let done = 0;
     const work = secs.map((sec, i) => async () => {
       if (aiOff) return;
@@ -2742,8 +2776,10 @@
         fromFile++;
         return toPart({ name: shortName(r.question), rule: `${r.question.replace(/::/g, ' ')} (${r.ref})`, critical });
       });
-      const name = (res?.view || (/^[A-Z]{1,3}$/.test(sec.key) ? `Section ${sec.key}` : sec.key)).slice(0, 60);
-      return { name, guidance: res?.guidance || `Photograph the area and any records for section ${sec.key}`, parts };
+      // names: AI group name, or your own heading from the file; short codes (A, B, 3) get the AI's view name
+      const isCode = /^([A-Z]{1,3}|\d{1,3})$/.test(sec.key);
+      const name = (sec.name || (isCode ? res?.view || `Section ${sec.key}` : sec.key)).slice(0, 60);
+      return { name, guidance: sec.guidance || res?.guidance || `Photograph the area and any records for ${isCode ? 'section ' + sec.key : name}`, parts };
     });
     const seen = {};
     views.forEach((v, i) => { const k = v.name.toLowerCase(); if (seen[k]) v.name = `${v.name} (${secs[i].key})`; seen[v.name.toLowerCase()] = 1; });
@@ -2754,7 +2790,7 @@
     const nCrit = cl.rows.filter((r) => /critical/i.test(r.risk)).length;
     $('#edAiNote').textContent = aiOff
       ? `No AI key is set up, so all ${n} items were taken directly from ${cl.file} (${views.length} views). An Admin can add a key to have the AI rewrite them as photo checks.`
-      : `Kept all ${n} items from ${cl.file} in ${views.length} views${info ? ` (AI: ${info.label})` : ''}. ${fromAi} rewritten by the AI as photo checks${fromFile ? `, ${fromFile} taken directly from your file` : ''}.${nCrit ? ` ${nCrit} rows with risk "Critical" are marked critical.` : ''} Review them, then save.`;
+      : `Kept all ${n} items from ${cl.file} in ${views.length} views${groupedBy === 'ai' ? ' grouped by the AI' : groupedBy === 'blocks' ? ' (blocks of rows – the AI could not group them)' : ''}${info ? ` (AI: ${info.label})` : ''}. ${fromAi} rewritten by the AI as photo checks${fromFile ? `, ${fromFile} taken directly from your file` : ''}.${nCrit ? ` ${nCrit} rows with risk "Critical" are marked critical.` : ''} Review them, then save.`;
     if (failed && !aiOff) toast(`${failed} section${failed > 1 ? 's' : ''} could not be rewritten by the AI – those rows were taken from your file.`, true);
     else toast(`Checklist created: ${views.length} views, ${n} checks`);
     track('checklist_converted', { items: n, views: views.length, ai: !aiOff });

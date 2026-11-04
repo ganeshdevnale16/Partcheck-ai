@@ -410,3 +410,24 @@ Also name this section as a photo view (2-4 words, e.g. "Cold storage", "Licence
 Return JSON: { "view": "", "guidance": "", "checks": [{ "ref": "A01", "name": "", "rule": "", "critical": false }] }
 Return exactly ${rows.length} checks, one per row, same order.`;
 }
+
+
+// Group a flat checklist (no sections) into photo views: every row goes into exactly one view.
+export const SYSTEM_GROUP = `You organise inspection checklists into the places an inspector walks to and photographs.
+You never drop or duplicate rows: every row reference appears in exactly one view.`;
+export function groupPrompt({ name, description, rows }) {
+  const list = rows.map((r) => `${r.ref} | ${r.text}`).join('\n');
+  return `Inspection: "${name}"${description ? ` – ${description}` : ''}
+The checklist below has no sections. Group the rows into photo "views": places or areas the inspector photographs
+(e.g. for a kitchen audit: "Licence & records", "Receiving area", "Cold storage", "Cooking area", "Staff hygiene", "Wash & waste area").
+- Between 2 and 14 views, each with 2 to 15 rows. Group by where the evidence is photographed, not by topic words alone.
+- Rows about documents, registers, licences or training go into one or two "records" views.
+- Keep the rows' original order inside each view.
+- View name: 2-4 words. Guidance: one line on what to photograph.
+
+Rows (ref | question):
+${list}
+
+Return JSON: { "views": [{ "name": "", "guidance": "", "refs": ["ref1", "ref2"] }] }
+Every one of the ${rows.length} refs must appear exactly once.`;
+}

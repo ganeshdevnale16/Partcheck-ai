@@ -2,7 +2,7 @@
 // Runs the inspection photos through the configured vision model and returns structured results.
 import {
   resolveConfig, callVision, parseJson, friendlyError, rateLimit, publicInfo,
-  SYSTEM_INSPECTOR, SYSTEM_CHECKLIST, SYSTEM_LOCATE, SYSTEM_CONVERT, convertPrompt, evaluatePrompt, verifyPrompt, framePrompt, suggestPrompt, locatePrompt, boxSpec, readBox,
+  SYSTEM_INSPECTOR, SYSTEM_CHECKLIST, SYSTEM_LOCATE, SYSTEM_CONVERT, convertPrompt, SYSTEM_GROUP, groupPrompt, evaluatePrompt, verifyPrompt, framePrompt, suggestPrompt, locatePrompt, boxSpec, readBox,
 } from './_ai.js';
 
 const MAX_PHOTOS = 12;
@@ -108,6 +108,28 @@ export default async function handler(req, res) {
           summary: clip(raw.summary, 900), recommendations: (raw.recommendations || []).slice(0, 10).map((r) => clip(r, 260)).filter(Boolean),
         },
       });
+    }
+
+    if (b.task === 'group') {
+      const rows = (Array.isArray(b.rows) ? b.rows : []).slice(0, 400).map((r) => ({ ref: clip(r.ref, 20), text: clip(r.text, 220).replace(/\s+/g, ' ') })).filter((r) => r.ref && r.text);
+      if (rows.length < 2) return res.status(400).json({ ok: false, error: 'Not enough rows to group.' });
+      const raw = parseJson(await callVision(cfg, { system: SYSTEM_GROUP, text: groupPrompt({ name: clip(b.name, 120), description: clip(b.description, 600), rows }), maxTokens: Math.min(16000, 1500 + rows.length * 25), timeoutMs: 50000 }));
+      // every ref exactly once: drop unknown / repeated refs, put forgotten rows next to the row before them
+      const known = new Set(rows.map((r) => r.ref)), seen = new Set();
+      const views = (Array.isArray(raw.views) ? raw.views : []).slice(0, 20).map((v) => ({
+        name: clip(v?.name, 60).trim(), guidance: clip(v?.guidance, 200).trim(),
+        refs: (Array.isArray(v?.refs) ? v.refs : []).map((x) => String(x).trim()).filter((x) => known.has(x) && !seen.has(x) && seen.add(x)),
+      })).filter((v) => v.name && v.refs.length);
+      if (!views.length) return res.status(502).json({ ok: false, error: 'The AI did not return any views. Try again.' });
+      rows.forEach((r, i) => {
+        if (seen.has(r.ref)) return;
+        const prev = rows.slice(0, i).reverse().find((p) => seen.has(p.ref));
+        const host = (prev && views.find((v) => v.refs.includes(prev.ref))) || views[views.length - 1];
+        host.refs.splice(prev ? host.refs.indexOf(prev.ref) + 1 : host.refs.length, 0, r.ref); seen.add(r.ref);
+      });
+      const names = new Set();
+      views.forEach((v) => { let n = v.name, k = 2; while (names.has(n.toLowerCase())) n = `${v.name} ${k++}`; v.name = n; names.add(n.toLowerCase()); });
+      return res.json({ ok: true, info: publicInfo(cfg), result: { views } });
     }
 
     if (b.task === 'convert') {
