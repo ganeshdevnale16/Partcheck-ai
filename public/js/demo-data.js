@@ -28,21 +28,47 @@
   const GENERATED = { 'p-tag': 'tag-pass', 'f-tag': 'tag-fail' };
 
   // ---------- inspection types ----------
+  // Scaffold systems. A check line can end with "@tube,cuplock,..." = applies only to those systems (others: Not applicable).
+  // A line starting with "?" = optional component: if it is not there, the check is Not applicable instead of Not provided.
+  const SCAFFOLD_TYPES = [
+    { key: 'tube', label: 'Tube & coupler', hint: 'Loose tubes joined with couplers / clamps' },
+    { key: 'cuplock', label: 'Cup-lock', hint: 'Cup joints on the standards; ledger blades locked by a top cup' },
+    { key: 'ringlock', label: 'Ring-lock', hint: 'Rosettes (round plates with holes) on the standards; wedge clamps' },
+    { key: 'mobile', label: 'Mobile tower', hint: 'Fabricated / aluminium frames on castor wheels' },
+    { key: 'frame', label: 'Frame (H-frame)', hint: 'Prefabricated H-frames with cross braces and coupling pins' },
+  ];
+  // Photo guidance per system for the views where it matters
+  const SCAFFOLD_GUIDANCE = {
+    'Base & foundation': {
+      tube: 'Low angle: every standard, its base plate and the ground under it', cuplock: 'Low angle: the bottom of every standard, base jacks / plates and the ground',
+      ringlock: 'Low angle: base collars, base jacks and the ground under them', mobile: 'Every castor with its brake, the outriggers and the floor',
+      frame: 'Low angle: frame legs, base jacks / plates and the ground',
+    },
+    'Joints & members (close-up)': {
+      tube: 'Close-up of 2-3 couplers and the tubes around them (rust, bends)', cuplock: 'Close-up of 2-3 cup joints: the top cup must sit down over the ledger blades',
+      ringlock: 'Close-up of 2-3 rosettes: the wedges must be driven down tight', mobile: 'Close-up of frame locks / pins and the brace hooks',
+      frame: 'Close-up of coupling pins, cross-brace locks and frame joints',
+    },
+  };
+  const ALL_RIGID = '@tube,cuplock,ringlock,frame';
   const SCAFFOLD = {
-    id: 'type-scaffold', builtin: true, rev: 2, module: 'scaffold', safety: true,
-    name: 'Scaffold', description: 'Access scaffold: base, structure, working platform, ladder and tag',
+    id: 'type-scaffold', builtin: true, rev: 3, module: 'scaffold', safety: true,
+    name: 'Scaffold', description: 'Access scaffold – choose the system (tube & coupler, cup-lock, ring-lock, mobile tower, frame); checks adapt to it',
     idLabel: 'Scaffold ID / tag no.',
     angles: [
       { name: 'Base & foundation', guidance: 'Low angle along the bottom: all uprights, base plates and the ground', parts: [
-        '! Base plates :: a steel base plate under every visible standard (upright)',
-        'Base jacks :: adjustable base jacks not bent or over-extended, no heavy rust on the thread or stem',
-        '! Sole boards / firm ground :: base plates rest on timber sole boards on firm, level ground – no bricks, blocks or loose packing',
+        `! Base plates :: a base plate (or base jack plate) under every standard ${ALL_RIGID}`,
+        `? Base jacks :: adjustable base jacks not bent, not over-extended, no heavy rust on the thread ${ALL_RIGID}`,
+        `! Sole boards / firm ground :: first identify the surface. Level concrete slab: base plates directly on it are acceptable. Soil or soft ground: timber sole boards required. Bricks, blocks or loose packing under a base are a defect ${ALL_RIGID}`,
+        '! Castors locked :: every castor wheel has its brake locked and is undamaged @mobile',
+        '! Outriggers / stabilisers :: outriggers fitted where required and resting on the floor @mobile',
         'Standards plumb :: uprights look vertical, not leaning, bent or sinking',
       ] },
       { name: 'Full elevation', guidance: 'Step back and capture the whole face from bottom to top', parts: [
-        '! Ledgers and transoms :: horizontal tubes present at every lift, none missing',
-        '! Bracing :: diagonal (face) bracing fitted along the scaffold face',
-        '! Ties to structure :: scaffold is tied to the building / structure at regular intervals',
+        '! Ledgers and transoms :: horizontal members present at every lift, none missing (a top lift used as the working platform may have no transom) @tube,cuplock,ringlock',
+        '! Bracing :: diagonal braces fixed between standards along the scaffold face (raking props, wire ropes and cables are NOT bracing)',
+        `! Ties to structure :: scaffold tied to the building / structure at regular intervals ${ALL_RIGID}`,
+        '! Height-to-base ratio :: tower height not more than about 3 times its smallest base width (outriggers included) @mobile',
       ] },
       { name: 'Working platform', guidance: 'At platform level: deck, edges and rails in view', parts: [
         '! Platform fully boarded :: boards or decks cover the full width, no gaps, broken or loose boards',
@@ -52,16 +78,18 @@
         'Platform clear :: no heavy stacks of material, debris or trip hazards on the platform',
       ] },
       { name: 'Access ladder', guidance: 'The ladder and the landing where it reaches the platform', parts: [
-        '! Access ladder :: ladder is tied / secured, lands on a proper landing platform and extends about 1 m above it',
+        '! Access ladder :: a ladder or stair gives safe access: tied / secured, lands on a proper landing platform and extends about 1 m above it',
+      ] },
+      { name: 'Joints & members (close-up)', guidance: 'Close-up of joints and members: couplers / cups / rosettes, rust and damage', parts: [
+        '! Couplers / clamps :: couplers fitted at the joints, none missing or hanging loose @tube',
+        '! System joints locked :: cup-lock: top cups locked down over the ledger blades; ring-lock: wedges driven tight; frame / mobile: coupling pins and locks engaged @cuplock,ringlock,frame,mobile',
+        'Tube condition :: light surface rust is acceptable; heavy rust, flaking, pitting, bent, cracked or crushed members are a defect',
       ] },
       { name: 'Scaffold tag', guidance: 'Close-up of the tag or status board at the access point', parts: [
         'Scaffold tag :: an inspection tag or status board is displayed at the access point',
       ] },
     ],
-    general_parts: [
-      '! Couplers / clamps :: fitted at the joints, none missing or hanging loose',
-      'Tube condition :: no bent, cracked, crushed or heavily rusted tubes',
-    ],
+    general_parts: [],
   };
 
   const FSSAI = {
@@ -212,7 +240,7 @@
   const S = (status, confidence, evidence, box, on) => ({ status, confidence, evidence, box, on });
   const SCAFFOLD_SCRIPT = {
     pass: {
-      images: { 'Base & foundation': 'p-base', 'Full elevation': 'p-elev', 'Working platform': 'p-plat', 'Access ladder': 'p-ladder', 'Scaffold tag': 'p-tag' },
+      images: { 'Base & foundation': 'p-base', 'Full elevation': 'p-elev', 'Working platform': 'p-plat', 'Access ladder': 'p-ladder', 'Scaffold tag': 'p-tag', 'Joints & members (close-up)': 'p-elev' },
       checks: {
         'Base plates': S('present', 0.97, 'Steel base plates seated under all 6 visible standards', [0.06, 0.66, 0.34, 0.26]),
         'Base jacks': S('present', 0.93, 'Base jacks set with short extension; threads clean, no rust', null),
@@ -237,7 +265,7 @@
       recommendations: ['Re-inspect within 7 days or after bad weather, alteration or impact.', 'Keep the platform clear of stacked material.'],
     },
     fail: {
-      images: { 'Base & foundation': 'f-base', 'Full elevation': 'f-elev', 'Working platform': 'f-plat', 'Access ladder': 'f-ladder', 'Scaffold tag': 'f-tag' },
+      images: { 'Base & foundation': 'f-base', 'Full elevation': 'f-elev', 'Working platform': 'f-plat', 'Access ladder': 'f-ladder', 'Scaffold tag': 'f-tag', 'Joints & members (close-up)': 'f-elev' },
       checks: {
         'Base plates': S('present', 0.86, 'Base plates visible under the front standards', [0.08, 0.68, 0.3, 0.24]),
         'Base jacks': S('present', 0.8, 'Base jacks visible under the front standards; no damage seen', null),
@@ -276,7 +304,7 @@
 
   // findings written from the client's real site photos (inspected 21 Oct 2026)
   SCAFFOLD_SCRIPT.site = {
-    images: { 'Base & foundation': 's-base', 'Full elevation': 's-elev', 'Working platform': 's-plat', 'Access ladder': 's-ladder', 'Scaffold tag': 's-ladder' },
+    images: { 'Base & foundation': 's-base', 'Full elevation': 's-elev', 'Working platform': 's-plat', 'Access ladder': 's-ladder', 'Scaffold tag': 's-ladder', 'Joints & members (close-up)': 's-base' },
     shotTimes: { 'Base & foundation': '11:08:48', 'Access ladder': '11:08:56', 'Scaffold tag': '11:08:56', 'Working platform': '11:09:02', 'Full elevation': '11:09:09' },
     checks: {
       'Base plates': S('present', 0.9, 'Base plate seated flat on the concrete floor', [0.36, 0.5, 0.24, 0.11]),
@@ -326,10 +354,10 @@
 
   // ---------- seeded QR tags (assets) ----------
   const ASSETS = [
-    { id: 'SC-014', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower A – east elevation', height: '12', length: '18', lifts: '6', duty: 'Medium', swl: '600', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 20 },
-    { id: 'SC-027', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Tower B – north face', height: '18', length: '24', lifts: '9', duty: 'Heavy', swl: '900', erector: 'Apex Access Pvt Ltd', scenario: 'fail', createdDaysAgo: 34 },
-    { id: 'SC-031', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Podium – ramp area', height: '6', length: '6', lifts: '3', duty: 'Light', swl: '300', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 6 },
-    { id: 'SC-040', typeId: 'type-scaffold', site: 'Orchid Heights, Pune', location: 'Service yard – drain side wall', height: '8', length: '10', lifts: '4', duty: 'Medium', swl: '450', erector: 'Site contractor', scenario: 'site', createdDaysAgo: 3 },
+    { id: 'SC-014', typeId: 'type-scaffold', scaffoldType: 'tube', site: 'Orchid Heights, Pune', location: 'Tower A – east elevation', height: '12', length: '18', lifts: '6', duty: 'Medium', swl: '600', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 20 },
+    { id: 'SC-027', typeId: 'type-scaffold', scaffoldType: 'tube', site: 'Orchid Heights, Pune', location: 'Tower B – north face', height: '18', length: '24', lifts: '9', duty: 'Heavy', swl: '900', erector: 'Apex Access Pvt Ltd', scenario: 'fail', createdDaysAgo: 34 },
+    { id: 'SC-031', typeId: 'type-scaffold', scaffoldType: 'tube', site: 'Orchid Heights, Pune', location: 'Podium – ramp area', height: '6', length: '6', lifts: '3', duty: 'Light', swl: '300', erector: 'Shree Scaffolding Co.', scenario: 'pass', createdDaysAgo: 6 },
+    { id: 'SC-040', typeId: 'type-scaffold', scaffoldType: 'tube', site: 'Orchid Heights, Pune', location: 'Service yard – drain side wall', height: '8', length: '10', lifts: '4', duty: 'Medium', swl: '450', erector: 'Site contractor', scenario: 'site', createdDaysAgo: 3 },
     { id: 'FE-108', typeId: 'type-extinguisher', site: 'Orchid Heights, Pune', location: 'Site office – entrance', scenario: 'pass', createdDaysAgo: 60 },
   ];
 
@@ -367,5 +395,5 @@
     ], general: ['SWL marking :: safe working load marked'] },
   ];
 
-  window.DEMO = { LOCAL, COMMONS, GENERATED, TYPES, SCAFFOLD_SCRIPT, LIVE_HINTS, ASSETS, SEED_REPORTS, SUGGEST_LIBRARY };
+  window.DEMO = { SCAFFOLD_TYPES, SCAFFOLD_GUIDANCE, LOCAL, COMMONS, GENERATED, TYPES, SCAFFOLD_SCRIPT, LIVE_HINTS, ASSETS, SEED_REPORTS, SUGGEST_LIBRARY };
 })();

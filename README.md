@@ -1,7 +1,33 @@
-# Inspection AI v6.9
+# Inspection AI v7.1
 
 Scan a scaffold's QR tag, inspect it with the camera, and get a Green / Yellow / Red result and a signed PDF report.
 Inspections can use **real AI** (Azure OpenAI, OpenAI, Google Gemini or Anthropic Claude) or pre-recorded demo results.
+
+## What's new in v7.1 – Microsoft Foundry keys
+- Azure provider now accepts every endpoint Microsoft Foundry shows: paste the deployment's **Target URI** into Endpoint and it is
+  split into endpoint + deployment name + API version automatically. Also works with `/openai/v1`, `/models` (Foundry model
+  inference) and project endpoints (`/api/projects/...`).
+- If one endpoint style answers "deployment not found", the others are tried; the one that works is remembered.
+- Older API version rejected by the model (GPT-5 / o-series) → retried with a newer one automatically.
+- Clear message when the model name is used instead of the deployment **Name** (Foundry → Models + endpoints → Name column).
+
+## What's new in v7.0 – scaffold accuracy (site-test feedback, Nov 2026)
+Fixes for the 8 findings of the Runwal site test (baseline 39 % correct):
+1. **Scaffold type** – choose Tube & coupler, Cup-lock, Ring-lock, Mobile tower, Frame (or "Not sure – let AI detect") when
+   creating a QR tag or an inspection. The AI identifies the system from the photos first and asks if it disagrees.
+   Checks that do not apply to the system are Not applicable automatically (e.g. couplers on cup-lock, sole boards on a mobile tower).
+2. **Existence before compliance** – the AI first decides if each component exists, and only then whether it is OK.
+3. **Five result types** – OK · Not OK (defect) · Not provided · Not visible · Not applicable (excluded from the score).
+4. **Fewer false positives** – a visual scaffold guide is sent with every scaffold request (what bracing / ties / ladders / tags /
+   couplers are, and their look-alikes such as raking props and wire ropes). Every OK must be pointed to on a photo by the
+   precise-marking pass, otherwise it becomes Not visible.
+5. **Ground** – the AI classifies the surface first; a level concrete slab needs no sole boards.
+6. **Rust** – photos are sent at 1600 px (was 1024); light surface rust = OK, heavy rust / pitting = defect; new close-up view.
+7. **More photos needed** – when checks are Not visible the result lists what to photograph and offers "Add photos and re-check".
+8. **Annotations** – boxes only around components that exist (no boxes for Not provided / Not visible / Not applicable).
+- New checklist syntax: `?` = optional part, `@cuplock,ringlock` = applies only to those systems.
+- Field-test scoring: `tests/field-test-2026-11/ground_truth.json` + `node scripts/score-field-test.mjs <export.json>`.
+- Claude: if a model rejects the forced JSON tool, the app falls back to plain JSON automatically (fixes the "tool_choice" error).
 
 ## What's new in v6.9
 - Checklists without sections: if the AI grouping fails it is retried once and the real error is shown.

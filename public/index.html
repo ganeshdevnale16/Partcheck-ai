@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://upload.wikimedia.org" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=6.9.0" />
+  <link rel="stylesheet" href="styles.css?v=7.1.0" />
 </head>
 <body class="locked">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -165,6 +165,7 @@
         <div class="grid2">
           <label class="field"><span id="sfIdLabel">Asset ID / serial no.</span><input id="sfId" maxlength="60" placeholder="e.g. SC-014" autocomplete="off" /></label>
           <label class="field"><span>Location / area</span><input id="sfLocation" maxlength="120" placeholder="e.g. Tower A – east elevation" /></label>
+          <label class="field" id="sfScafWrap"><span>Scaffold type</span><select id="sfScafType"><option value="auto">Not sure – let AI detect</option><option value="tube">Tube &amp; coupler</option><option value="cuplock">Cup-lock</option><option value="ringlock">Ring-lock</option><option value="mobile">Mobile tower</option><option value="frame">Frame (H-frame)</option></select></label>
         </div>
         <label class="field"><span>Inspected by</span><input id="sfInspector" maxlength="80" autocomplete="name" /></label>
         <details class="more" id="sfMore">
@@ -218,7 +219,7 @@
       </div>
       <div class="card">
         <h2 class="card-title">Views and checks</h2>
-        <p class="muted">Each view is one photo angle. One check per line. Start a line with <code>!</code> for a critical check. After <code>::</code> write what must be visibly true.</p>
+        <p class="muted">Each view is one photo angle. One check per line. Start a line with <code>!</code> for a critical check, or <code>?</code> for an optional part (if it is not there the check becomes Not applicable). After <code>::</code> write what must be visibly true. For scaffolds, end a line with <code>@cuplock,ringlock</code> etc. to use it only for those systems.</p>
         <div class="ed-views" id="edViews"></div>
         <button type="button" class="btn btn-line btn-sm" id="edAddView">Add a view</button>
         <label class="field" style="margin-top:1rem"><span>Checks that can be seen in any view</span><textarea id="edGeneral" rows="2"></textarea></label>
@@ -387,12 +388,12 @@
           <div class="set-row"><p><b>Keep the key</b><small>Server: one key for every user (encrypted). Device: only this browser.</small></p>
             <div class="seg" id="aiPlaceSeg"><button type="button" data-v="server">On the server</button><button type="button" data-v="device">This device only</button></div></div>
           <div class="grid2" style="margin-top:.8rem">
-            <label class="field"><span>AI provider</span><select id="aiProvider"><option value="azure">Azure OpenAI</option><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic Claude</option></select></label>
+            <label class="field"><span>AI provider</span><select id="aiProvider"><option value="azure">Azure OpenAI / Microsoft Foundry</option><option value="openai">OpenAI</option><option value="gemini">Google Gemini</option><option value="anthropic">Anthropic Claude</option></select></label>
             <label class="field" id="aiModelRow"><span>Model</span><input id="aiModel" maxlength="120" autocomplete="off" spellcheck="false" /></label>
           </div>
           <div class="grid2" id="aiAzureFields">
-            <label class="field"><span>Endpoint</span><input id="aiEndpoint" maxlength="300" placeholder="https://your-resource.openai.azure.com" autocomplete="off" spellcheck="false" /></label>
-            <label class="field"><span>Deployment name</span><input id="aiDeployment" maxlength="120" placeholder="e.g. gpt-4o" autocomplete="off" spellcheck="false" /></label>
+            <label class="field"><span>Endpoint</span><input id="aiEndpoint" maxlength="300" placeholder="https://your-resource.openai.azure.com – or paste the Foundry Target URI" autocomplete="off" spellcheck="false" /></label>
+            <label class="field"><span>Deployment name (Foundry: Name column)</span><input id="aiDeployment" maxlength="120" placeholder="e.g. gpt-4o" autocomplete="off" spellcheck="false" /></label>
             <label class="field"><span>API version</span><input id="aiApiVersion" maxlength="40" autocomplete="off" spellcheck="false" /></label>
           </div>
           <label class="field"><span>API key</span><input id="aiKey" type="password" maxlength="400" autocomplete="off" spellcheck="false" /></label>
@@ -456,10 +457,10 @@
   <div id="printArea"></div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <script src="js/qr.js?v=6.9.0"></script>
-  <script src="js/demo-data.js?v=6.9.0"></script>
-  <script src="js/media.js?v=6.9.0"></script>
-  <script src="js/workspace.js?v=6.9.0"></script>
-  <script src="js/app.js?v=6.9.0"></script>
+  <script src="js/qr.js?v=7.1.0"></script>
+  <script src="js/demo-data.js?v=7.1.0"></script>
+  <script src="js/media.js?v=7.1.0"></script>
+  <script src="js/workspace.js?v=7.1.0"></script>
+  <script src="js/app.js?v=7.1.0"></script>
 </body>
 </html>

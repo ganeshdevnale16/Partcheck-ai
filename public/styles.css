@@ -1056,3 +1056,20 @@ main { padding: 1.25rem 1.1rem 2.5rem; }
 .type-row { display: flex; gap: .5rem; align-items: stretch; }
 .type-row .row { flex: 1; min-width: 0; }
 .type-row .dup-btn { flex: none; align-self: center; }
+
+/* v7: five result types */
+.ic.absent { background: #da291c; color: #fff; }
+.ic.na { background: #d0d0ce; color: #53565a; }
+.plist li.na { opacity: .62; }
+.plist li.na .pnote { font-style: italic; }
+.counts .na { color: #75787b; }
+.doc .st.absent { color: #da291c; } .doc .st.na { color: #75787b; }
+.seg-status { flex-wrap: wrap; }
+.seg-status button.on[data-v="absent"] { background: #da291c; color: #fff; }
+.seg-status button.on[data-v="na"] { background: #75787b; color: #fff; }
+.lv-group li.absent i { background: #da291c; color: #fff; }
+.lv-group li.na i { background: #d0d0ce; color: #53565a; }
+
+/* v7: more photos needed */
+.more-photos { border-left: 4px solid #ffcd00; background: #fffbea; }
+.more-photos ul { margin: .4rem 0 .9rem; padding-left: 1.1rem; display: grid; gap: .35rem; font-size: .9rem; }

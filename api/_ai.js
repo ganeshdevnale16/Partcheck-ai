@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { configured as redisReady, redis } from './_store.js';
 
 export const PROVIDERS = {
-  azure: { label: 'Azure OpenAI', defaultModel: '' },
+  azure: { label: 'Azure OpenAI / Foundry', defaultModel: '' },
   openai: { label: 'OpenAI', defaultModel: 'gpt-5-mini' },
   gemini: { label: 'Google Gemini', defaultModel: 'gemini-2.5-flash' },
   anthropic: { label: 'Anthropic Claude', defaultModel: 'claude-sonnet-5-5' },
@@ -58,20 +58,44 @@ export async function resolveConfig(deviceCfg) {
   if (e) return { ...e, source: 'env' };
   return null;
 }
+// Azure OpenAI / Microsoft Foundry: accept any endpoint shape the portal shows
+//   https://<res>.openai.azure.com                                   (classic)
+//   https://<res>.cognitiveservices.azure.com/openai/deployments/<name>/chat/completions?api-version=...   (Foundry "Target URI")
+//   https://<res>.openai.azure.com/openai/v1                         (v1 API, model name in the body)
+//   https://<res>.services.ai.azure.com/models                       (Foundry model inference)
+//   https://<res>.services.ai.azure.com/api/projects/<project>       (Foundry project endpoint)
+export function parseAzureEndpoint(endpoint, deployment = '', apiVersion = '') {
+  let u;
+  try { u = new URL(String(endpoint || '').trim()); } catch { return null; }
+  const path = u.pathname.replace(/\/+$/, '');
+  const fromPath = (path.match(/\/openai\/deployments\/([^/]+)/i) || [])[1];
+  const hint = /\/openai\/v1/i.test(path) ? 'v1' : /^\/models/i.test(path) ? 'inference' : 'deployments';
+  return {
+    origin: u.origin, hint,
+    deployment: String(deployment || '').trim() || (fromPath ? decodeURIComponent(fromPath) : ''),
+    apiVersion: String(apiVersion || '').trim() || u.searchParams.get('api-version') || '',
+  };
+}
+
 export function clean(c = {}) {
   const t = (v, n = 300) => String(v ?? '').trim().slice(0, n);
   const provider = PROVIDERS[c.provider] ? c.provider : '';
   return {
     provider, apiKey: t(c.apiKey, 400), model: t(c.model, 120), endpoint: t(c.endpoint, 300).replace(/\/+$/, ''),
     deployment: t(c.deployment, 120), apiVersion: t(c.apiVersion, 40),
+    ...(provider === 'azure' && /\/openai\/deployments\//i.test(String(c.endpoint || '')) ? (() => {
+      const z = parseAzureEndpoint(t(c.endpoint, 300), t(c.deployment, 120), t(c.apiVersion, 40));
+      return z ? { endpoint: z.origin, deployment: z.deployment, apiVersion: z.apiVersion } : {};
+    })() : {}),
   };
 }
 export function validate(c) {
   if (!c.provider) return 'Choose an AI provider.';
   if (!c.apiKey) return 'Enter the API key.';
   if (c.provider === 'azure') {
-    if (!/^https:\/\/[^\s/]+/.test(c.endpoint || '')) return 'Enter the Azure endpoint, e.g. https://your-resource.openai.azure.com';
-    if (!c.deployment) return 'Enter the Azure deployment name.';
+    const z = /^https:\/\/[^\s/]+/.test(c.endpoint || '') ? parseAzureEndpoint(c.endpoint, c.deployment, c.apiVersion) : null;
+    if (!z) return 'Enter the endpoint, e.g. https://your-resource.openai.azure.com (or paste the Target URI from Microsoft Foundry).';
+    if (!z.deployment) return 'Enter the deployment name (Foundry → Models + endpoints → the Name column).';
   }
   return '';
 }
@@ -112,6 +136,8 @@ function truncated(text, who) {
   e.code = 'truncated'; e.partial = text || ''; e.status = 502;
   return e;
 }
+const AZURE_ROUTE = new Map(); // endpoint+deployment -> the API style that worked (kept while the server is warm)
+const CLAUDE_NO_TOOL = new Set(); // models that rejected a forced tool call (remembered while the server is warm)
 const isReasoningOpenAI = (m) => /^(gpt-5|o\d)/i.test(m || '');
 
 export async function callVision(cfg, { system, text, images = [], docs = [], maxTokens = 4000, json = true, timeoutMs = 55000 }) {
@@ -132,27 +158,49 @@ export async function callVision(cfg, { system, text, images = [], docs = [], ma
   if (p === 'anthropic') {
     const model = cfg.model || PROVIDERS.anthropic.defaultModel;
     const content = [...docs.map((d) => ({ type: 'document', source: { type: 'base64', media_type: d.mime, data: d.data } })), ...images.map((im) => ({ type: 'image', source: { type: 'base64', media_type: mime(im), data: b64(im) } })), { type: 'text', text }];
-    const body = { model, max_tokens: Math.max(maxTokens, 4096), system, messages: [{ role: 'user', content }] };
-    if (json) {
-      // Claude has no JSON mode: a forced tool call makes it return one valid JSON object
-      body.tools = [{ name: 'submit_answer', description: 'Submit the complete answer in the JSON structure described in the request.', input_schema: { type: 'object', additionalProperties: true } }];
-      body.tool_choice = { type: 'tool', name: 'submit_answer' };
+    const headers = { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' };
+    // Claude has no JSON mode. First choice: a forced tool call (always one JSON object).
+    // Some models / accounts / settings reject a forced tool -> fall back to plain text asking for JSON only.
+    let mode = json && !CLAUDE_NO_TOOL.has(model) ? 'tool' : 'plain';
+    let maxTok = Math.max(maxTokens, 4096);
+    const send = (m) => {
+      const body = { model, max_tokens: maxTok, system: m === 'plain' && json ? `${system}\n\nReply with ONE valid JSON object only – no text before or after it and no markdown fences.` : system, messages: [{ role: 'user', content }] };
+      if (m === 'tool') {
+        body.tools = [{ name: 'submit_answer', description: 'Submit the complete answer in the JSON structure described in the request.', input_schema: { type: 'object', additionalProperties: true } }];
+        body.tool_choice = { type: 'tool', name: 'submit_answer' };
+      }
+      return postJson('https://api.anthropic.com/v1/messages', headers, body, timeoutMs);
+    };
+    let j = null;
+    for (let attempt = 0; attempt < 4 && !j; attempt++) {
+      try { j = await send(mode); }
+      catch (e) {
+        if (e.status !== 400) throw e;
+        const msg = String(e.message || '');
+        const lim = msg.match(/max_tokens[^0-9]*\d+\s*>\s*(\d{3,6})/i) || msg.match(/maximum[^0-9]{0,40}(\d{3,6})/i);
+        if (/max_tokens/i.test(msg) && lim && +lim[1] < maxTok) { maxTok = +lim[1]; continue; }      // model has a lower output limit
+        if (mode === 'tool' && /tool|schema|thinking/i.test(msg)) { CLAUDE_NO_TOOL.add(model); mode = 'plain'; continue; } // forced tool not accepted
+        throw e;
+      }
+      const tool = (j.content || []).find((x) => x.type === 'tool_use');
+      // a tool call with an empty answer is useless: ask again for plain JSON
+      if (mode === 'tool' && j.stop_reason !== 'max_tokens' && (!tool || !tool.input || !Object.keys(tool.input).length)) { mode = 'plain'; j = null; }
     }
-    const j = await postJson('https://api.anthropic.com/v1/messages', { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' }, body, timeoutMs);
-    const tool = (j?.content || []).find((x) => x.type === 'tool_use');
-    const out = tool ? JSON.stringify(tool.input ?? {}) : (j?.content || []).map((x) => x.text || '').join('');
-    if (j?.stop_reason === 'max_tokens') throw truncated(out, 'Claude');
+    if (!j) throw Object.assign(new Error('Claude did not return an answer. Try again.'), { status: 502 });
+    const tool = (j.content || []).find((x) => x.type === 'tool_use');
+    const out = tool ? JSON.stringify(tool.input ?? {}) : (j.content || []).filter((x) => x.type === 'text').map((x) => x.text || '').join('');
+    if (j.stop_reason === 'max_tokens') throw truncated(out, 'Claude');
+    if (j.stop_reason === 'refusal') throw Object.assign(new Error('Claude declined to answer this request.'), { status: 502 });
     return out;
   }
+
   // OpenAI and Azure OpenAI share the chat-completions format
   const messages = [{ role: 'system', content: system }, { role: 'user', content: [{ type: 'text', text }, ...docs.map((d) => ({ type: 'file', file: { filename: d.name || 'document.pdf', file_data: `data:${d.mime};base64,${d.data}` } })), ...images.map((im) => ({ type: 'image_url', image_url: { url: im, detail: 'high' } }))] }];
   const reasoning = p === 'openai' && isReasoningOpenAI(cfg.model || PROVIDERS.openai.defaultModel);
   // GPT-5 / o-series spend part of the budget on hidden reasoning: give more room and keep reasoning short
   let url, headers, body = { messages, max_completion_tokens: reasoning ? Math.max(maxTokens * 2, 16000) : maxTokens, ...(reasoning ? { reasoning_effort: 'low' } : {}), ...(json ? { response_format: { type: 'json_object' } } : {}) };
-  if (p === 'azure') {
-    url = `${cfg.endpoint}/openai/deployments/${encodeURIComponent(cfg.deployment)}/chat/completions?api-version=${encodeURIComponent(cfg.apiVersion || '2024-10-21')}`;
-    headers = { 'api-key': cfg.apiKey };
-  } else {
+  if (p === 'azure') return callAzure(cfg, body, maxTokens, timeoutMs);
+  {
     url = 'https://api.openai.com/v1/chat/completions';
     headers = { Authorization: `Bearer ${cfg.apiKey}` };
     body.model = cfg.model || PROVIDERS.openai.defaultModel;
@@ -178,6 +226,52 @@ export async function callVision(cfg, { system, text, images = [], docs = [], ma
 
 // Parse a model's JSON answer. Handles ```json fences, text around the object, trailing commas,
 // and answers that were cut off: everything up to the last complete item is kept.
+async function callAzure(cfg, baseBody, maxTokens, timeoutMs) {
+  const z = parseAzureEndpoint(cfg.endpoint, cfg.deployment, cfg.apiVersion);
+  if (!z || !z.deployment) { const e = new Error('Azure / Foundry endpoint or deployment name is missing.'); e.status = 400; throw e; }
+  const dep = encodeURIComponent(z.deployment);
+  const ver = z.apiVersion || '2024-10-21';
+  const routes = {
+    deployments: (v = ver) => ({ url: `${z.origin}/openai/deployments/${dep}/chat/completions?api-version=${encodeURIComponent(v)}`, body: { ...baseBody } }),
+    v1: () => ({ url: `${z.origin}/openai/v1/chat/completions`, body: { ...baseBody, model: z.deployment } }),
+    inference: () => ({ url: `${z.origin}/models/chat/completions?api-version=2024-05-01-preview`, body: { ...baseBody, model: z.deployment } }),
+  };
+  const key = `${z.origin}|${z.deployment}`;
+  const order = [...new Set([AZURE_ROUTE.get(key), z.hint, 'deployments', 'v1', 'inference'].filter(Boolean))];
+  // reasoning deployments (gpt-5, o-series) use part of the budget for thinking: give room (it is a cap, not a cost)
+  const headers = { 'api-key': cfg.apiKey };
+  let lastErr = null;
+  for (const style of order) {
+    let { url, body } = routes[style]();
+    body.max_completion_tokens = Math.max(maxTokens * 2, 16000);
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try {
+        const j = await postJson(url, headers, body, timeoutMs);
+        AZURE_ROUTE.set(key, style);
+        const out = j?.choices?.[0]?.message?.content || '';
+        if (j?.choices?.[0]?.finish_reason === 'length') throw truncated(out, 'Azure OpenAI');
+        return out;
+      } catch (e) {
+        if (e.code === 'truncated') throw e;
+        lastErr = e;
+        const m = String(e.message || '');
+        if (e.status === 401 || e.status === 403 || e.status === 429) throw e;          // key / quota: no point trying other styles
+        if (e.status === 400 && /api[-_ ]?version/i.test(m) && style === 'deployments' && !url.includes('2025-04-01-preview')) { ({ url } = routes.deployments('2025-04-01-preview')); continue; }
+        if (e.status === 400 && /reasoning_effort/i.test(m)) { delete body.reasoning_effort; continue; }
+        if (e.status === 400 && /max_completion_tokens/i.test(m)) { const { max_completion_tokens, ...rest } = body; body = { ...rest, max_tokens: Math.min(maxTokens, 16000) }; continue; }
+        if (e.status === 400 && /response_format/i.test(m)) { delete body.response_format; continue; }
+        break;                                                                          // 404 / other: try the next endpoint style
+      }
+    }
+    if (lastErr && lastErr.status !== 404 && lastErr.status !== 400) break;
+  }
+  if (lastErr?.status === 404) {
+    const e = new Error(`deployment "${z.deployment}" was not found at ${z.origin}. In Microsoft Foundry open Models + endpoints and use the deployment NAME (Name column), not the model name.`);
+    e.status = 404; e.azure = true; throw e;
+  }
+  throw lastErr || new Error('Azure request failed.');
+}
+
 export function parseJson(text, { allowPartial = true } = {}) {
   let t = String(text || '').trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
   const tryParse = (s) => { try { return JSON.parse(s); } catch { try { return JSON.parse(s.replace(/,\s*([}\]])/g, '$1')); } catch { return undefined; } } };
@@ -214,7 +308,7 @@ export function friendlyError(e, cfg) {
   const s = e.status || 0;
   const who = PROVIDERS[cfg?.provider]?.label || 'AI provider';
   if (s === 401 || s === 403) return `${who} rejected the API key (${s}). Check the key in Settings → AI engine.`;
-  if (s === 404) return `${who}: model or deployment not found (404). Check the model / deployment name.`;
+  if (s === 404) return e.azure ? `${who}: ${e.message}` : `${who}: model or deployment not found (404). Check the model / deployment name.`;
   if (s === 429) return `${who} rate limit or quota reached (429). Wait a minute or check billing.`;
   if (s === 504) return e.message;
   return `${who}: ${String(e.message || 'request failed').slice(0, 240)}`;
@@ -259,18 +353,51 @@ export function readBox(obj, provider) {
 }
 
 // ---------- prompts ----------
-export const SYSTEM_INSPECTOR = `You are an experienced, certified site safety inspector (scaffolding, access equipment, fire and electrical equipment).
-You assess inspection photos against a checklist. Be strict and evidence based:
-- "present" (OK) only when the photo clearly shows the requirement is met.
-- "missing" (Not OK) when the photo clearly shows it is not met, or the item is absent where it should be visible.
-- "unclear" when it cannot be judged from the photos (hidden, out of frame, blurry, too dark).
-Never guess. Use short, plain-English evidence a site supervisor understands, describing what is actually visible.
+export const SYSTEM_INSPECTOR = `You are an experienced, certified site safety inspector (scaffolding, access equipment, fire, electrical, food safety).
+You assess inspection photos against a checklist. Work in two steps for EVERY check, and never guess:
+STEP 1 – EXISTENCE. Is the component / thing the check is about actually in the photos?
+  "yes" = you can see it (say where) · "no" = the place where it would be is clearly visible and it is not there ·
+  "not_visible" = that part of the scaffold / area is out of frame, hidden, blurry or too dark ·
+  "not_applicable" = it is not needed for this item (e.g. platform checks when there is no working platform at all).
+  For condition checks (e.g. "standards plumb", "platform clear", "member condition") "exists" = yes when the area is visible.
+STEP 2 – COMPLIANCE, only when exists = "yes": "ok" when the photos clearly show the requirement is met, otherwise "defect".
+Do NOT report a defect for something that does not exist (no ladder = exists "no", never "ladder not tied").
+Do NOT report "ok" unless you can point to the component in a photo.
+Use short, plain-English evidence a site supervisor understands, describing what is actually visible.
 Boxes mark WHERE the evidence is in the photo, using the coordinate format given in the request. Use null when no single area applies.`;
+
+// Visual guide for scaffold inspections: system recognition, component definitions and the usual look-alikes
+export const SCAFFOLD_SYSTEMS = { tube: 'Tube & coupler', cuplock: 'Cup-lock', ringlock: 'Ring-lock', mobile: 'Mobile tower', frame: 'Frame (H-frame)' };
+export function scaffoldGuide(type) {
+  const sys = SCAFFOLD_SYSTEMS[type] ? `This scaffold is a ${SCAFFOLD_SYSTEMS[type]} system.` : 'The scaffold system is not known – identify it from the photos.';
+  return `
+SCAFFOLD GUIDE – read before judging. ${sys}
+Systems: Tube & coupler = loose tubes joined by couplers/clamps (bolted fittings at joints) · Cup-lock = standards with cup joints
+every ~0.5 m; ledger blades sit in a bottom cup and are locked by a top cup; NO couplers at node points ·
+Ring-lock = standards with round rosettes (plates with holes); ledgers/braces fixed with wedge heads; NO couplers ·
+Mobile tower = fabricated / aluminium frames on castor wheels; NO base plates, sole boards or ties · Frame = prefabricated H-frames with cross braces.
+Components and their look-alikes:
+- Standard = vertical member. Ledger = horizontal member along the length. Transom = horizontal member across the width under the boards.
+- BRACING = a diagonal tube or brace FIXED between standards inside the scaffold (zig-zag or single diagonals along the face).
+  NOT bracing: raking props / shores leaning against the scaffold from outside, wire ropes, cables, slings, building members, shadows.
+  If you cannot see a diagonal member clearly connected between two standards, bracing exists = "no" or "not_visible".
+- TIE = a tube, anchor or bracket that physically connects the scaffold to the building wall / slab. Being close to a wall is NOT a tie.
+- ACCESS LADDER = a ladder or stair tower serving the platform. Vertical standards or ledgers are NOT a ladder.
+- SCAFFOLD TAG = a card / board fixed at the access point showing inspection status. Signage on the building is NOT a scaffold tag.
+- COUPLERS / CLAMPS exist only on tube & coupler scaffolds (and as extra bracing fittings). Cup joints, rosettes and frame pins are NOT couplers.
+- BASE JACKS = threaded adjustable jacks at the foot of standards. Plain tube ends are NOT base jacks.
+- WORKING PLATFORM = boards / decks a person stands on. If there is no working platform at all, every platform, top rail, mid rail,
+  toe board and "platform clear" check is "not_applicable".
+GROUND: first identify the surface. A level concrete slab, floor or terrace is FIRM ground: base plates directly on it are acceptable,
+  sole boards are NOT required. Sole boards are required on soil, gravel or soft ground. Bricks, blocks or loose packing under a base = defect.
+RUST: light surface rust / discolouration = ok. Heavy rust with flaking, pitting or visible loss of section = defect.
+`;
+}
 
 export function evaluatePrompt(p) {
   const photos = p.photos.map((ph, i) => `Photo ${i + 1}: view "${ph.view}"`).join('\n');
-  const checks = p.checks.map((c) => `${c.id} | view: ${c.view} | ${c.critical ? 'CRITICAL | ' : ''}${c.name}${c.rule ? ' — must be: ' + c.rule : ''}`).join('\n');
-  return `Inspection: ${p.item}${p.description ? ` (${p.description})` : ''}
+  const checks = p.checks.map((c) => `${c.id} | view: ${c.view} | ${c.critical ? 'CRITICAL | ' : ''}${c.optional ? 'OPTIONAL | ' : ''}${c.name}${c.rule ? ' — must be: ' + c.rule : ''}`).join('\n');
+  return `Inspection: ${p.item}${p.description ? ` (${p.description})` : ''}${p.scaffold ? scaffoldGuide(p.scaffoldType) : ''}
 Asset: ${p.assetId || '-'} at ${p.location || '-'}
 
 Photos (in order):
@@ -285,14 +412,28 @@ Return JSON:
   "item_identified": "what the photos show",
   "item_matches": true or false (do the photos show a ${p.item}?),
   "photo_quality": [{ "photo": 1, "ok": true, "issue": "" }],
-  "checks": [{ "id": "c1", "status": "present" | "missing" | "unclear", "evidence": "what you see", "photo": 1, "${p.box.key}": ${p.box.shape} or null }],
+  "checks": [{ "id": "c1", "exists": "yes" | "no" | "not_visible" | "not_applicable", "status": "ok" | "defect" (only when exists = yes), "evidence": "what you see and where", "photo": 1, "${p.box.key}": ${p.box.shape} or null }],
   "defects": [{ "photo": 1, "description": "damage or hazard not covered by the checklist", "severity": "high" | "medium" | "low", "${p.box.key}": ${p.box.shape} or null }],
   "summary": "2-3 sentence overall assessment",
   "recommendations": ["short corrective or next actions"]
 }
 Coordinates: ${p.box.text}, measured on the photo named in "photo".
 "photo" = the number of the photo that shows the evidence best.
+Boxes: only when exists = "yes" – around the component itself. Never draw a box for something that is not there.
 Return every checklist id exactly once.`;
+}
+
+// exists/status from the model -> the app's result types
+// present = OK · missing = Not OK (defect) · absent = Not provided · unclear = Not visible · na = Not applicable
+export function mapOutcome(r, optional) {
+  const ex = String(r?.exists || '').toLowerCase().replace(/[\s-]+/g, '_');
+  const st = String(r?.status || '').toLowerCase();
+  if (ex === 'yes') return st === 'ok' || st === 'present' ? 'present' : st === 'defect' || st === 'missing' || st === 'not_ok' ? 'missing' : 'unclear';
+  if (ex === 'no') return optional ? 'na' : 'absent';
+  if (ex === 'not_visible') return 'unclear';
+  if (ex === 'not_applicable' || ex === 'na') return 'na';
+  // older answer format
+  return { present: 'present', ok: 'present', missing: 'missing', defect: 'missing', unclear: 'unclear', not_visible: 'unclear', absent: 'absent', na: 'na', not_applicable: 'na' }[st] || 'unclear';
 }
 
 export function verifyPrompt(p) {
@@ -317,7 +458,8 @@ Views of this inspection: ${p.views.join(', ')}. The inspector says they are on:
 Checks still open (id | requirement):
 ${checks}
 
-Judge ONLY checks you can clearly see in THIS frame. Skip anything not visible.
+Judge ONLY checks you can clearly see in THIS frame. Skip anything not visible.${p.scaffold ? scaffoldGuide(p.scaffoldType) : ''}
+Never mark something "present" unless you can point to it; never mark a defect for a component that is not there.
 Coordinates: ${p.box.text}. Box tightly around the part that proves the result.
 Return JSON:
 {
@@ -374,6 +516,7 @@ export function locatePrompt(p) {
   const list = p.items.map((t) => `${t.id} | ${t.result} | ${t.name}${t.rule ? ' — requirement: ' + t.rule : ''}${t.evidence ? ' | inspector note: ' + t.evidence : ''}`).join('\n');
   return `Photo: ${p.view ? `"${p.view}" view of ` : ''}a ${p.item}.
 ${p.grid ? 'A light grid is drawn on the photo with labels every 100 units (0-1000) along the top and left edges – use it to read positions accurately.\n' : ''}
+${p.scaffold ? scaffoldGuide(p.scaffoldType) : ''}
 Mark each finding below on THIS photo.
 - OK findings: box the object that proves the requirement is met (e.g. the base plate, the guardrail, the tag).
 - NOT OK findings: box the exact problem area. If something is missing, box the place where it should be
@@ -430,4 +573,18 @@ ${list}
 
 Return JSON: { "views": [{ "name": "", "guidance": "", "refs": ["ref1", "ref2"] }] }
 Every one of the ${rows.length} refs must appear exactly once.`;
+}
+
+
+// Identify the scaffold system from photos (asked before the inspection)
+export const SYSTEM_IDENTIFY = 'You are a scaffolding expert. You identify scaffold systems from photos by their joints and components.';
+export function identifyPrompt() {
+  return `Which scaffold system do these photos show?
+- tube: tube & coupler – loose tubes joined by bolted couplers / clamps at the joints
+- cuplock: cup-lock – standards with cup joints at regular intervals, ledger blades locked by a top cup
+- ringlock: ring-lock – standards with round rosettes (plates with holes), wedge-head ledgers and braces
+- mobile: mobile tower – fabricated / aluminium frames standing on castor wheels
+- frame: frame / H-frame – prefabricated H-shaped frames with cross braces
+- unknown: not a scaffold, or the joints cannot be seen
+Return JSON: { "type": "tube" | "cuplock" | "ringlock" | "mobile" | "frame" | "unknown", "confidence": 0 to 1, "evidence": "the joints / features you saw" }`;
 }

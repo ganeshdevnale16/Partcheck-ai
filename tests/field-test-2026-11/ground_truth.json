@@ -1,0 +1,26 @@
+{
+  "source": "Site testing Nov 2026 – physical inspection by the site team (feedback forms for Scaffold 1-4). Status values: present = OK, missing = Not OK (defect), absent = Not provided, unclear = Not visible, na = Not applicable. A list means any of these is acceptable.",
+  "baseline": { "version": "6.x", "correct": 25, "partly": 3, "wrong": 24, "invalid": 12, "accuracy": "39%" },
+  "scaffolds": {
+    "B50": { "label": "Scaffold 1 – Runwal A Tower B", "type": "cuplock", "expected": {
+      "Base plates": "unclear", "Base jacks": ["unclear", "na"], "Sole boards / firm ground": "present", "Standards plumb": "present",
+      "Ledgers and transoms": "missing", "Bracing": "absent", "Ties to structure": "absent", "Platform fully boarded": "missing",
+      "Top rail": "absent", "Mid rail": "missing", "Toe boards": "absent", "Platform clear": "missing", "Access ladder": "absent",
+      "Scaffold tag": "absent", "Couplers / clamps": "na", "Tube condition": "missing" } },
+    "SC02": { "label": "Scaffold 2 – Runwal SC 02 NTA", "type": "cuplock", "expected": {
+      "Base plates": "absent", "Base jacks": "na", "Sole boards / firm ground": "present", "Standards plumb": "present",
+      "Ledgers and transoms": "present", "Bracing": "absent", "Ties to structure": "absent", "Platform fully boarded": "na",
+      "Top rail": "na", "Mid rail": "na", "Toe boards": "na", "Platform clear": "na", "Access ladder": "absent",
+      "Scaffold tag": "absent", "Couplers / clamps": "na", "Tube condition": "missing" } },
+    "SC03": { "label": "Scaffold 3 – Runwal SC 03 NTA", "type": "cuplock", "expected": {
+      "Base plates": "absent", "Base jacks": "na", "Sole boards / firm ground": "present", "Standards plumb": "present",
+      "Ledgers and transoms": "present", "Bracing": "absent", "Ties to structure": "absent", "Platform fully boarded": "na",
+      "Top rail": "na", "Mid rail": "na", "Toe boards": "na", "Platform clear": "na", "Access ladder": "absent",
+      "Scaffold tag": "absent", "Couplers / clamps": "na", "Tube condition": "missing" } },
+    "SC04": { "label": "Scaffold 4 – Runwal Tower C P2 (mobile)", "type": "mobile", "expected": {
+      "Base plates": "na", "Base jacks": "na", "Sole boards / firm ground": "na", "Standards plumb": "present",
+      "Ledgers and transoms": ["present", "na"], "Bracing": "absent", "Ties to structure": ["na", "absent"], "Platform fully boarded": "unclear",
+      "Top rail": "absent", "Mid rail": "missing", "Toe boards": "absent", "Platform clear": "present", "Access ladder": "absent",
+      "Scaffold tag": "absent", "Couplers / clamps": "na", "Tube condition": "present" } }
+  }
+}

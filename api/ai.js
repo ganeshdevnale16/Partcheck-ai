@@ -2,7 +2,7 @@
 // Runs the inspection photos through the configured vision model and returns structured results.
 import {
   resolveConfig, callVision, parseJson, friendlyError, rateLimit, publicInfo,
-  SYSTEM_INSPECTOR, SYSTEM_CHECKLIST, SYSTEM_LOCATE, SYSTEM_CONVERT, convertPrompt, SYSTEM_GROUP, groupPrompt, evaluatePrompt, verifyPrompt, framePrompt, suggestPrompt, locatePrompt, boxSpec, readBox,
+  SYSTEM_INSPECTOR, SYSTEM_IDENTIFY, identifyPrompt, mapOutcome, SYSTEM_CHECKLIST, SYSTEM_LOCATE, SYSTEM_CONVERT, convertPrompt, SYSTEM_GROUP, groupPrompt, evaluatePrompt, verifyPrompt, framePrompt, suggestPrompt, locatePrompt, boxSpec, readBox,
 } from './_ai.js';
 
 const MAX_PHOTOS = 12;
@@ -69,17 +69,20 @@ export default async function handler(req, res) {
 
     if (b.task === 'evaluate') {
       const photos = (Array.isArray(b.photos) ? b.photos : []).filter((p) => okImage(p?.image)).slice(0, MAX_PHOTOS);
-      const checks = (Array.isArray(b.checks) ? b.checks : []).slice(0, 150).map((c) => ({ id: clip(c.id, 10), view: clip(c.view, 60), name: clip(c.name, 80), rule: clip(c.rule, 240), critical: !!c.critical }));
+      const checks = (Array.isArray(b.checks) ? b.checks : []).slice(0, 150).map((c) => ({ id: clip(c.id, 10), view: clip(c.view, 60), name: clip(c.name, 80), rule: clip(c.rule, 400), critical: !!c.critical, optional: !!c.optional }));
       if (!photos.length) return res.status(400).json({ ok: false, error: 'No photos received.' });
       if (!checks.length) return res.status(400).json({ ok: false, error: 'No checks to evaluate.' });
-      const p = { item: clip(b.item, 80), description: clip(b.description, 300), assetId: clip(b.assetId, 60), location: clip(b.location, 160), photos: photos.map((x) => ({ view: clip(x.view, 60) })), checks, box: boxSpec(cfg.provider) };
+      const p = { item: clip(b.item, 80), description: clip(b.description, 300), assetId: clip(b.assetId, 60), location: clip(b.location, 160), photos: photos.map((x) => ({ view: clip(x.view, 60) })), checks, box: boxSpec(cfg.provider), scaffold: b.module === 'scaffold', scaffoldType: clip(b.scaffoldType, 20) };
       const images = photos.map((x) => x.image);
       const raw = parseJson(await callVision(cfg, { system: SYSTEM_INSPECTOR, text: evaluatePrompt(p), images, maxTokens: Math.min(20000, 4000 + checks.length * 110) }));
       const byId = new Map((raw.checks || []).map((c) => [String(c.id), c]));
       let results = checks.map((c) => {
         const r = byId.get(c.id) || {};
         const photo = Number(r.photo) >= 1 && Number(r.photo) <= photos.length ? Number(r.photo) : null;
-        return { id: c.id, status: STATUS.has(r.status) ? r.status : 'unclear', evidence: clip(r.evidence || (byId.has(c.id) ? '' : 'Not assessed by the AI'), 300), photo, box: photo ? readBox(r, cfg.provider) : null };
+        const status = byId.has(c.id) ? mapOutcome(r, c.optional) : 'unclear';
+        // boxes only around things that exist (OK or defect)
+        const boxed = status === 'present' || status === 'missing';
+        return { id: c.id, status, evidence: clip(r.evidence || (byId.has(c.id) ? '' : 'Not assessed by the AI'), 300), photo, box: photo && boxed ? readBox(r, cfg.provider) : null };
       });
       // second, independent check of every OK (strict mode)
       let verified = false;
@@ -108,6 +111,16 @@ export default async function handler(req, res) {
           summary: clip(raw.summary, 900), recommendations: (raw.recommendations || []).slice(0, 10).map((r) => clip(r, 260)).filter(Boolean),
         },
       });
+    }
+
+    if (b.task === 'identify') {
+      const images = (Array.isArray(b.images) ? b.images : []).filter(okImage).slice(0, 4);
+      if (!images.length) return res.status(400).json({ ok: false, error: 'No photos received.' });
+      const raw = parseJson(await callVision(cfg, { system: SYSTEM_IDENTIFY, text: identifyPrompt(), images, maxTokens: 800, timeoutMs: 30000 }));
+      const types = ['tube', 'cuplock', 'ringlock', 'mobile', 'frame'];
+      const type = types.includes(String(raw.type).toLowerCase()) ? String(raw.type).toLowerCase() : 'unknown';
+      const confidence = Math.max(0, Math.min(1, Number(raw.confidence) || 0));
+      return res.json({ ok: true, info: publicInfo(cfg), result: { type, confidence, evidence: clip(raw.evidence, 300) } });
     }
 
     if (b.task === 'group') {
@@ -152,7 +165,7 @@ export default async function handler(req, res) {
       if (!okImage(b.image)) return res.status(400).json({ ok: false, error: 'No photo received.' });
       const items = (Array.isArray(b.items) ? b.items : []).slice(0, 30).map((t) => ({ id: clip(t.id, 10), name: clip(t.name, 80), rule: clip(t.rule, 200), result: t.result === 'NOT OK' ? 'NOT OK' : 'OK', evidence: clip(t.evidence, 200) }));
       if (!items.length) return res.json({ ok: true, result: { items: [] } });
-      const p = { item: clip(b.item, 80), view: clip(b.view, 60), grid: !!b.grid, items, box: boxSpec(cfg.provider) };
+      const p = { item: clip(b.item, 80), view: clip(b.view, 60), grid: !!b.grid, items, box: boxSpec(cfg.provider), scaffold: b.module === 'scaffold', scaffoldType: clip(b.scaffoldType, 20) };
       const raw = parseJson(await callVision(cfg, { system: SYSTEM_LOCATE, text: locatePrompt(p), images: [b.image], maxTokens: 1500, timeoutMs: 40000 }));
       const ids = new Set(items.map((t) => t.id));
       return res.json({ ok: true, ms: Date.now() - started, result: { items: (raw.items || []).filter((t) => ids.has(String(t.id))).map((t) => ({ id: String(t.id), box: readBox(t, cfg.provider) })) } });
@@ -161,7 +174,7 @@ export default async function handler(req, res) {
     if (b.task === 'frame') {
       if (!okImage(b.image)) return res.status(400).json({ ok: false, error: 'No camera frame received.' });
       const checks = (Array.isArray(b.checks) ? b.checks : []).slice(0, 150).map((c) => ({ id: clip(c.id, 10), name: clip(c.name, 80), rule: clip(c.rule, 200), critical: !!c.critical }));
-      const p = { item: clip(b.item, 80), assetId: clip(b.assetId, 60), views: (b.views || []).slice(0, 12).map((v) => clip(v, 60)), view: clip(b.view, 60), checks, box: boxSpec(cfg.provider) };
+      const p = { item: clip(b.item, 80), assetId: clip(b.assetId, 60), views: (b.views || []).slice(0, 12).map((v) => clip(v, 60)), view: clip(b.view, 60), checks, box: boxSpec(cfg.provider), scaffold: b.module === 'scaffold', scaffoldType: clip(b.scaffoldType, 20) };
       const raw = parseJson(await callVision(cfg, { system: SYSTEM_INSPECTOR, text: framePrompt(p), images: [b.image], maxTokens: 1800, timeoutMs: 25000 }));
       const ids = new Set(checks.map((c) => c.id));
       return res.json({
